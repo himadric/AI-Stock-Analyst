@@ -1,4 +1,6 @@
-const API_BASE_URL = "http://localhost:8000/api";
+const API_BASE_URL = process.env.NODE_ENV === "production" 
+    ? "/api" 
+    : "http://localhost:8000/api";
 
 export async function fetchCompanyInfo(ticker: string) {
     const res = await fetch(`${API_BASE_URL}/finance/info/${ticker}`);

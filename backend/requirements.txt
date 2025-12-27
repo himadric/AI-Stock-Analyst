@@ -8,3 +8,5 @@ yfinance
 beautifulsoup4
 pytest
 httpx
+google-generativeai
+mangum
