@@ -6,4 +6,3 @@ python-dotenv
 yfinance
 beautifulsoup4
 httpx
-google-generativeai

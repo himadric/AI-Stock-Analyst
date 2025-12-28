@@ -1,55 +1,56 @@
 import os
-import google.generativeai as genai
+import httpx
 from dotenv import load_dotenv
 
 load_dotenv()
 
 class AIService:
     def __init__(self):
-        # 1. Fetch key
-        api_key = os.getenv("GEMINI_API_KEY")
-        
-        if not api_key:
+        self.api_key = os.getenv("GEMINI_API_KEY")
+        if not self.api_key:
             print("Warning: GEMINI_API_KEY not found in environment.")
-            self.model = None
-            return # Exit early if no key
-
-        try:
-            # 2. Configure centrally
-            genai.configure(api_key=api_key)
-            
-            # 3. Use stable model name
-            # If 'gemini-1.5-flash' still fails, use 'gemini-1.5-flash-001'
-            self.model = genai.GenerativeModel('gemini-3-flash-preview')
-            
-            # Test connection (Optional: removes 'lazy' error catching)
-            # self.model.generate_content("test") 
-            
-        except Exception as e:
-            print(f"Failed to initialize Gemini: {e}")
-            self.model = None
+        
+        # Use a standard, fast model
+        self.model_name = "gemini-1.5-flash"
+        self.api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model_name}:generateContent?key={self.api_key}"
 
     def generate_insight(self, prompt: str):
-        if not self.model:
+        if not self.api_key:
             return "AI service is not configured. Please check your .env file and API key."
         
         try:
-            # Use a timeout or safety settings if necessary
-            response = self.model.generate_content(
-                prompt,
-                generation_config=genai.types.GenerationConfig(
-                    temperature=0.1,  # Keeps it focused and factual
-                    top_p=0.95,
-                )
-            )
+            # Construct the payload for the REST API
+            payload = {
+                "contents": [{
+                    "parts": [{"text": prompt}]
+                }],
+                "generationConfig": {
+                    "temperature": 0.1,
+                    "topP": 0.95
+                }
+            }
+
+            # Use httpx for a synchronous call (or async if we were async, but this class is sync-ish for now)
+            # Since the frontend calls this via FastAPI sync endpoints (def), using sync httpx.post is fine.
+            # If the methods were `async def`, we'd use `httpx.AsyncClient`. 
+            # The methods in `main.py` calling this might be async. Let's start with sync for compatibility.
             
-            # Basic validation of response
-            if not response.text:
-                return "The model returned an empty response (possibly blocked by safety filters)."
+            with httpx.Client() as client:
+                response = client.post(self.api_url, json=payload, timeout=30.0)
                 
-            return response.text
+                if response.status_code != 200:
+                    return f"Error from AI Provider: {response.text}"
+                
+                data = response.json()
+                # Parse the nested response structure
+                # { "candidates": [ { "content": { "parts": [ { "text": "..." } ] } } ] }
+                try:
+                    text = data["candidates"][0]["content"]["parts"][0]["text"]
+                    return text
+                except (KeyError, IndexError):
+                    return "Error: Unexpected response format from AI provider."
+                    
         except Exception as e:
-            # This will catch the 404 if the model name is wrong
             return f"Error generating insight: {str(e)}"
 
     def summarize_filing(self, text: str, ticker: str):
