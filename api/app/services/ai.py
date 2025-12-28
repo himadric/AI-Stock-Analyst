@@ -11,7 +11,7 @@ class AIService:
             print("Warning: GEMINI_API_KEY not found in environment.")
         
         # Use a standard, fast model
-        self.model_name = "gemini-1.5-flash"
+        self.model_name = "gemini-3-flash-preview"
         self.api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model_name}:generateContent?key={self.api_key}"
 
     def generate_insight(self, prompt: str):
