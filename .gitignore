@@ -12,8 +12,8 @@ node_modules/
 __pycache__/
 *.py[cod]
 *$py.class
-backend/venv/
-backend/.venv/
+api/venv/
+api/.venv/
 
 # Next.js
 .next/
