@@ -1,12 +1,9 @@
 fastapi
-uvicorn[standard]
 pandas
 requests
 pydantic
 python-dotenv
 yfinance
 beautifulsoup4
-pytest
 httpx
 google-generativeai
-mangum
