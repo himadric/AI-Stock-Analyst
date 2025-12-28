@@ -59,7 +59,7 @@ export function FinancialCharts({ data }: FinancialChartsProps) {
               <Tooltip 
                 contentStyle={{ backgroundColor: 'hsl(var(--card))', borderColor: 'hsl(var(--border))', borderRadius: '8px' }}
                 itemStyle={{ color: 'hsl(var(--foreground))' }}
-                formatter={(value: number) => formatYAxis(value)}
+                formatter={(value: any) => formatYAxis(value)}
                 labelFormatter={(label) => new Date(label).toLocaleDateString(undefined, { dateStyle: 'medium' })}
               />
               <Legend />
