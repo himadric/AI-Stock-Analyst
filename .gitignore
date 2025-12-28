@@ -1,2 +1,25 @@
+# System
 .DS_Store
+Thumbs.db
+
+# Environment
 .env
+.env.*
+!.env.example
+
+# Dependencies
+node_modules/
+__pycache__/
+*.py[cod]
+*$py.class
+backend/venv/
+backend/.venv/
+
+# Next.js
+.next/
+out/
+build/
+dist/
+
+# Vercel
+.vercel
