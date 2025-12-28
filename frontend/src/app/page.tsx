@@ -508,10 +508,10 @@ function DashboardContent() {
 
 export default function DashboardPage() {
     return (
-        <DashboardLayout>
-            <Suspense fallback={<div className="flex justify-center p-12"><Loader2 className="animate-spin"/></div>}>
+        <Suspense fallback={<div className="flex justify-center p-12"><Loader2 className="animate-spin"/></div>}>
+            <DashboardLayout>
                 <DashboardContent />
-            </Suspense>
-        </DashboardLayout>
+            </DashboardLayout>
+        </Suspense>
     );
 }

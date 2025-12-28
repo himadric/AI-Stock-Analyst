@@ -89,10 +89,10 @@ function FinancialsContent() {
 
 export default function FinancialsPage() {
     return (
-        <DashboardLayout>
-            <Suspense fallback={<div className="flex justify-center p-12"><Loader2 className="animate-spin" /></div>}>
+        <Suspense fallback={<div className="flex justify-center p-12"><Loader2 className="animate-spin" /></div>}>
+            <DashboardLayout>
                 <FinancialsContent />
-            </Suspense>
-        </DashboardLayout>
+            </DashboardLayout>
+        </Suspense>
     );
 }

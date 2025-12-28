@@ -254,10 +254,10 @@ function ForecastContent() {
 
 export default function ForecastPage() {
     return (
-        <DashboardLayout>
-            <Suspense fallback={<div className="flex justify-center p-12"><Loader2 className="animate-spin" /></div>}>
+        <Suspense fallback={<div className="flex justify-center p-12"><Loader2 className="animate-spin" /></div>}>
+            <DashboardLayout>
                 <ForecastContent />
-            </Suspense>
-        </DashboardLayout>
+            </DashboardLayout>
+        </Suspense>
     );
 }

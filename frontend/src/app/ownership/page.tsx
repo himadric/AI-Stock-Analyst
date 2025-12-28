@@ -182,12 +182,12 @@ function OwnershipContent() {
 
 export default function OwnershipPage() {
     return (
-        <DashboardLayout>
-            <div className="flex-1 space-y-4 p-4 md:p-8 pt-6">
-                <Suspense fallback={<div className="flex justify-center p-12"><Loader2 className="animate-spin" /></div>}>
+        <Suspense fallback={<div className="flex justify-center p-12"><Loader2 className="animate-spin" /></div>}>
+            <DashboardLayout>
+                <div className="flex-1 space-y-4 p-4 md:p-8 pt-6">
                     <OwnershipContent />
-                </Suspense>
-            </div>
-        </DashboardLayout>
+                </div>
+            </DashboardLayout>
+        </Suspense>
     );
 }
