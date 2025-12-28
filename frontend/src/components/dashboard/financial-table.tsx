@@ -135,7 +135,14 @@ export function FinancialTable({ data, type }: FinancialTableProps) {
       { label: "FCF Yield", key: "fcf_yield", format: "percent" },
   ];
 
-  let rows = incomeRows;
+  interface RowDef {
+      label: string;
+      key: string;
+      bold?: boolean;
+      format?: string;
+  }
+
+  let rows: RowDef[] = incomeRows;
   let title = "Income Statement";
 
   if (type === 'balance') {
