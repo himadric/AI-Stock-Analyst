@@ -2,15 +2,15 @@
   "rewrites": [
     {
       "source": "/api/finance/:path*",
-      "destination": "/api/index.py"
+      "destination": "/api/index"
     },
     {
       "source": "/api/sec/:path*",
-      "destination": "/api/index.py"
+      "destination": "/api/index"
     },
     {
       "source": "/api/ai/:path*",
-      "destination": "/api/index.py"
+      "destination": "/api/index"
     }
   ]
 }
