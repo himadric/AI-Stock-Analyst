@@ -17,7 +17,9 @@ const COLORS = [
   "#f97316", "#f59e0b", "#84cc16", "#10b981", "#06b6d4", "#3b82f6", "#6366f1", "#8b5cf6", "#d946ef", "#f43f5e"
 ];
 
-export default function ChartPage() {
+import { Suspense } from "react";
+
+function ChartContent() {
   const searchParams = useSearchParams();
   const ticker = searchParams.get("ticker") || "AAPL";
   
@@ -92,7 +94,6 @@ export default function ChartPage() {
   };
 
   return (
-    <DashboardLayout>
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="text-3xl font-bold tracking-tight">{ticker} Technical Analysis</h2>
@@ -149,6 +150,15 @@ export default function ChartPage() {
             </div>
         </div>
       </div>
+  );
+}
+
+export default function ChartPage() {
+  return (
+    <DashboardLayout>
+      <Suspense fallback={<div className="flex justify-center p-12"><Loader2 className="animate-spin" /></div>}>
+        <ChartContent />
+      </Suspense>
     </DashboardLayout>
   );
 }

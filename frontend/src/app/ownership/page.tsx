@@ -1,7 +1,7 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import DashboardLayout from "@/components/layout/dashboard-layout";
 import { fetchOwnership, fetchOwnershipDetails } from "@/lib/api";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -184,7 +184,9 @@ export default function OwnershipPage() {
     return (
         <DashboardLayout>
             <div className="flex-1 space-y-4 p-4 md:p-8 pt-6">
-                <OwnershipContent />
+                <Suspense fallback={<div className="flex justify-center p-12"><Loader2 className="animate-spin" /></div>}>
+                    <OwnershipContent />
+                </Suspense>
             </div>
         </DashboardLayout>
     );

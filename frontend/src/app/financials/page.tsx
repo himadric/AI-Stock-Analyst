@@ -11,7 +11,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import Link from "next/link";
 import DashboardLayout from "@/components/layout/dashboard-layout";
 
-export default function FinancialsPage() {
+import { Suspense } from "react";
+
+function FinancialsContent() {
   const searchParams = useSearchParams();
   const ticker = searchParams.get("ticker") || "AAPL";
   
@@ -45,7 +47,6 @@ export default function FinancialsPage() {
   }, [ticker]);
 
   return (
-    <DashboardLayout>
         <div className="space-y-4">
             <div className="flex items-center justify-between space-y-2">
             <h2 className="text-3xl font-bold tracking-tight">{ticker} Financials</h2>
@@ -83,6 +84,15 @@ export default function FinancialsPage() {
                 </div>
             )}
         </div>
-    </DashboardLayout>
   );
+}
+
+export default function FinancialsPage() {
+    return (
+        <DashboardLayout>
+            <Suspense fallback={<div className="flex justify-center p-12"><Loader2 className="animate-spin" /></div>}>
+                <FinancialsContent />
+            </Suspense>
+        </DashboardLayout>
+    );
 }
