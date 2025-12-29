@@ -17,6 +17,7 @@ interface MacroChartCardProps {
   type: string;
   price?: number;
   change?: number;
+  changePercent?: number;
   history?: { date: string; value: number }[];
 }
 
