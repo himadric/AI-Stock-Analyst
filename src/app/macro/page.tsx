@@ -109,7 +109,45 @@ export default function MacroPage() {
                 <div className="flex justify-center p-12"><Loader2 className="animate-spin h-8 w-8 text-primary" /></div>
             ) : (
                 <div className="space-y-8">
-                    {Object.keys(groups).map((type) => {
+                    {/* 1. Economy Indicators (First) */}
+                    {groups["Economy"] && (
+                        <div className="space-y-4">
+                            <h3 className="text-xl font-semibold flex items-center gap-2">
+                                <div className="p-1.5 bg-primary/10 rounded-md">
+                                    <Activity className="h-5 w-5 text-primary" />
+                                </div>
+                                Economy Indicators
+                            </h3>
+                            <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
+                                {groups["Economy"].map((item: any) => (
+                                    <MacroChartCard 
+                                        key={item.ticker} 
+                                        ticker={item.ticker} 
+                                        name={item.name} 
+                                        type={item.type} 
+                                        price={item.price}
+                                        change={item.change}
+                                        changePercent={item.change_percent}
+                                        history={item.history}
+                                    />
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* 2. Sector Heatmap (Second) */}
+                    <div className="space-y-4">
+                        <h3 className="text-xl font-semibold flex items-center gap-2">
+                            <div className="p-1.5 bg-primary/10 rounded-md">
+                                <PieChart className="h-5 w-5 text-primary" />
+                            </div>
+                            Market Sectors (Real-Time)
+                        </h3>
+                        <SectorHeatmap data={sectorData} />
+                    </div>
+
+                    {/* 3. Other Indicators */}
+                    {Object.keys(groups).filter(type => type !== "Economy").map((type) => {
                         const Icon = typeIcons[type] || Activity;
                         return (
                             <div key={type} className="space-y-4">
@@ -119,10 +157,7 @@ export default function MacroPage() {
                                     </div>
                                     {type} Indicators
                                 </h3>
-                                <div className={cn(
-                                    "grid gap-6",
-                                    type === "Economy" ? "grid-cols-1 sm:grid-cols-2 lg:grid-cols-4" : "grid-cols-1"
-                                )}>
+                                <div className="grid gap-6 grid-cols-1">
                                     {groups[type].map((item: any) => (
                                         <MacroChartCard 
                                             key={item.ticker} 
@@ -139,17 +174,6 @@ export default function MacroPage() {
                             </div>
                         );
                     })}
-
-                    {/* Sector Heatmap Section */}
-                    <div className="space-y-4">
-                        <h3 className="text-xl font-semibold flex items-center gap-2">
-                            <div className="p-1.5 bg-primary/10 rounded-md">
-                                <PieChart className="h-5 w-5 text-primary" />
-                            </div>
-                            Market Sectors (Real-Time)
-                        </h3>
-                        <SectorHeatmap data={sectorData} />
-                    </div>
                 </div>
             )}
         </div>
