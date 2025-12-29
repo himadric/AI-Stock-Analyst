@@ -199,7 +199,7 @@ export function MacroChartCard({ ticker, name, type, price, change, changePercen
                          <Tooltip 
                             contentStyle={{ borderRadius: '8px', fontSize: '12px', border: '1px solid #e2e8f0' }}
                             labelFormatter={() => ''}
-                            formatter={(value: number) => [value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }), 'Price']}
+                            formatter={(value: any) => [Number(value).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }), 'Price']}
                         />
                         <Area 
                             type="monotone" 
