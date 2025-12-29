@@ -113,7 +113,7 @@ function ChartContent() {
 
         <div className="grid grid-cols-1 md:grid-cols-[300px_1fr] gap-6 items-start">
             {/* Left Sidebar: Sectors & Indicators */}
-            <div className="space-y-4 sticky top-4">
+            <div className="space-y-4 order-2 md:order-1 md:sticky md:top-4">
                 <SectorList 
                     selectedSectors={selectedSectors} 
                     onToggleSector={handleToggleSector} 
@@ -125,7 +125,7 @@ function ChartContent() {
             </div>
 
             {/* Right Main: Chart */}
-            <div className="space-y-6">
+            <div className="space-y-6 order-1 md:order-2">
                 {loading ? (
                     <div className="flex h-[500px] w-full items-center justify-center rounded-lg border bg-card">
                     <Loader2 className="h-8 w-8 animate-spin text-primary" />
