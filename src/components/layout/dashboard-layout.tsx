@@ -23,6 +23,7 @@ export default function DashboardLayout({
     { name: "Chart", href: "/chart", icon: TrendingUp },
     { name: "Forecast", href: "/forecast", icon: Target },
     { name: "Ownership", href: "/ownership", icon: Users },
+    { name: "Macro", href: "/macro", icon: Globe },
   ];
 
   const SidebarContent = () => (

@@ -136,3 +136,9 @@ export async function analyzeRisk(ticker: string) {
     if (!res.ok) throw new Error("Risk analysis failed");
     return res.json();
 }
+
+export async function fetchMacroData() {
+    const res = await fetch(`${API_BASE_URL}/finance/macro`);
+    if (!res.ok) throw new Error("Failed to fetch macro data");
+    return res.json();
+}

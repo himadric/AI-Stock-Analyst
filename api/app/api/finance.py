@@ -20,6 +20,10 @@ def get_quotes(symbols: str):
         return []
     return data
 
+@router.get("/macro")
+def get_macro_data():
+    return finance_service.get_macro_indicators()
+
 @router.get("/history/{ticker}")
 def get_stock_history(
     ticker: str, 
