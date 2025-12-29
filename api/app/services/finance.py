@@ -835,6 +835,49 @@ class FinanceService:
             
         return data
 
+    def get_sector_performance(self):
+        """
+        Fetches performance for the 11 GICS sectors using SPDR ETFs.
+        """
+        sectors = {
+            "XLK": "Technology",
+            "XLF": "Financials",
+            "XLV": "Healthcare",
+            "XLE": "Energy",
+            "XLY": "Consumer Discret.",
+            "XLP": "Consumer Staples",
+            "XLI": "Industrials",
+            "XLB": "Materials",
+            "XLU": "Utilities",
+            "XLRE": "Real Estate",
+            "XLC": "Comm. Services"
+        }
+        
+        try:
+            tickers_list = list(sectors.keys())
+            # Use batch fetching which is more efficient
+            quotes = self.get_quotes(tickers_list)
+            
+            sector_data = []
+            for q in quotes:
+                ticker = q['ticker']
+                if ticker in sectors:
+                    sector_data.append({
+                        "ticker": ticker,
+                        "name": sectors[ticker],
+                        "price": q['price'],
+                        "change": q['change'],
+                        "change_percent": q['change_percent']
+                    })
+            
+            # Sort by performance (best to worst)
+            sector_data.sort(key=lambda x: x['change_percent'], reverse=True)
+            return sector_data
+            
+        except Exception as e:
+            print(f"Error fetching sector data: {e}")
+            return []
+
     def _sanitize_data(self, data: any) -> any:
         """
         Recursively replace NaN/Infinity with None for JSON compliance.

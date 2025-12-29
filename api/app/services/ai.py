@@ -330,3 +330,52 @@ Free Cash Flow: {metrics.get('free_cash_flow')}
 </output_format>
 """
         return self.generate_insight(prompt)
+
+    def analyze_macro_market(self, macro_data: list, sector_data: list):
+        # Format Macro Data
+        macro_text = ""
+        for item in macro_data:
+            val = f"{item['price']:.2f}%" if str(item.get('price')).replace('.','').isdigit() else str(item.get('price'))
+            macro_text += f"- {item['name']} ({item['ticker']}): {val}\n"
+            
+        # Format Sector Data
+        sector_text = ""
+        # Sort by best performing for context
+        sorted_sectors = sorted(sector_data, key=lambda x: x['change_percent'], reverse=True)
+        for s in sorted_sectors:
+            sector_text += f"- {s['name']}: {s['change_percent']:.2f}%\n"
+
+        prompt = f"""
+<role>
+You are a Chief Market Strategist at a top-tier investment bank. Your job is to provide a "State of the Market" briefing to high-net-worth clients.
+</role>
+
+<task>
+Synthesize the provided Economic Indicators and Sector Performance data into a cohesive market narrative. Connect the dots between macro conditions (e.g., inflation, rates) and where money is flowing in the market (e.g., sector rotation).
+</task>
+
+<data_context>
+**Economic Indicators:**
+{macro_text}
+
+**Sector Performance (Today):**
+{sector_text}
+</data_context>
+
+<requirements>
+1. **The Big Picture**: Start with a single sentence characterizing the current market environment (e.g., "Risk-on rally driven by falling yields" or "Defensive rotation amidst growth fears").
+2. **Sector Flow**: Identify which sectors are leading vs. lagging and *why* this makes sense given the macro backdrop. (e.g., "Tech leading suggests risk appetite," or "Utilities outperforming indicates defensive positioning").
+3. **Macro Correlation**: Explicitly reference at least one macro data point (CPI, GDP, Fed Rate) to explain the sector movement.
+4. **Outlook**: Conclude with a brief 1-sentence forward-looking statement.
+5. **Tone**: Sophisticated, institutional, and high-signal.
+</requirements>
+
+<output_format>
+**MARKET BRIEFING:**
+* **Theme:** [1 sentence summary]
+* **Sector Analysis:** [2-3 sentences connecting leaders/laggards to the theme]
+* **Macro Driver:** [Insight on how GDP/CPI/Rates are influencing this price action]
+* **Outlook:** [Forward-looking takeaway]
+</output_format>
+"""
+        return self.generate_insight(prompt)

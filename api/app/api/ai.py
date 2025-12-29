@@ -104,3 +104,12 @@ async def analyze_risk(request: RiskRequest):
     # 4. Analyze
     analysis = ai_service.analyze_risk(request.ticker, info, financials, ownership)
     return {"analysis": analysis}
+
+class MacroAnalysisRequest(BaseModel):
+    macro_data: list
+    sector_data: list
+
+@router.post("/analyze_macro_market")
+async def analyze_macro_market(request: MacroAnalysisRequest):
+    analysis = ai_service.analyze_macro_market(request.macro_data, request.sector_data)
+    return {"analysis": analysis}

@@ -24,6 +24,10 @@ def get_quotes(symbols: str):
 def get_macro_data():
     return finance_service.get_macro_indicators()
 
+@router.get("/sectors")
+def get_sector_data():
+    return finance_service.get_sector_performance()
+
 @router.get("/history/{ticker}")
 def get_stock_history(
     ticker: str, 

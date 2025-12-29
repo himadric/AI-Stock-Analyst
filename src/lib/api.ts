@@ -142,3 +142,19 @@ export async function fetchMacroData() {
     if (!res.ok) throw new Error("Failed to fetch macro data");
     return res.json();
 }
+
+export async function fetchSectorPerformance() {
+    const res = await fetch(`${API_BASE_URL}/finance/sectors`);
+    if (!res.ok) throw new Error("Failed to fetch sector data");
+    return res.json();
+}
+
+export async function analyzeMacroMarket(macro_data: any[], sector_data: any[]) {
+    const res = await fetch(`${API_BASE_URL}/ai/analyze_macro_market`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ macro_data, sector_data }),
+    });
+    if (!res.ok) throw new Error("Macro analysis failed");
+    return res.json();
+}
