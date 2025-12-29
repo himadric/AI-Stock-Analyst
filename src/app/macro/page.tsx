@@ -109,17 +109,6 @@ export default function MacroPage() {
                 <div className="flex justify-center p-12"><Loader2 className="animate-spin h-8 w-8 text-primary" /></div>
             ) : (
                 <div className="space-y-8">
-                    {/* Sector Heatmap Section */}
-                    <div className="space-y-4">
-                        <h3 className="text-xl font-semibold flex items-center gap-2">
-                            <div className="p-1.5 bg-primary/10 rounded-md">
-                                <PieChart className="h-5 w-5 text-primary" />
-                            </div>
-                            Market Sectors (Real-Time)
-                        </h3>
-                        <SectorHeatmap data={sectorData} />
-                    </div>
-
                     {Object.keys(groups).map((type) => {
                         const Icon = typeIcons[type] || Activity;
                         return (
@@ -150,6 +139,17 @@ export default function MacroPage() {
                             </div>
                         );
                     })}
+
+                    {/* Sector Heatmap Section */}
+                    <div className="space-y-4">
+                        <h3 className="text-xl font-semibold flex items-center gap-2">
+                            <div className="p-1.5 bg-primary/10 rounded-md">
+                                <PieChart className="h-5 w-5 text-primary" />
+                            </div>
+                            Market Sectors (Real-Time)
+                        </h3>
+                        <SectorHeatmap data={sectorData} />
+                    </div>
                 </div>
             )}
         </div>
