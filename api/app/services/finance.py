@@ -709,6 +709,10 @@ class FinanceService:
             "^VIX": {"name": "Volatility Index", "type": "Risk"},
             "^TNX": {"name": "10Y Treasury Yield", "type": "Rate"},
             "DX=F": {"name": "Dollar Index", "type": "Currency"},
+            "EURUSD=X": {"name": "EUR/USD", "type": "Currency"},
+            "JPY=X": {"name": "USD/JPY", "type": "Currency"},
+            "GBPUSD=X": {"name": "GBP/USD", "type": "Currency"},
+            "INR=X": {"name": "USD/INR", "type": "Currency"},
             "CL=F": {"name": "Crude Oil", "type": "Commodity"},
             "GC=F": {"name": "Gold", "type": "Commodity"},
             "BTC-USD": {"name": "Bitcoin", "type": "Crypto"}
