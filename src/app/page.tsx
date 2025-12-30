@@ -7,8 +7,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ArrowUpRight, FileText, Loader2, Sparkles, AlertTriangle } from "lucide-react";
-import { fetchCompanyInfo, fetchSECFilings, analyzeFiling, fetchCompanyNews, analyzeNews, fetchFinancials, analyzeValuation, analyzeRisk } from "@/lib/api";
+import { fetchCompanyInfo, fetchSECFilings, analyzeFiling, fetchCompanyNews, analyzeNews, fetchFinancials, analyzeValuation, analyzeRisk, fetchPeerComparison } from "@/lib/api";
 import { FinancialCharts } from "@/components/dashboard/financial-charts";
+import { PeerComparison } from "@/components/dashboard/peer-comparison";
 
 const METRIC_TOOLTIPS = {
     "Market Cap": "The \"Total Value\" of the company. It helps you categorize the stock as a Mega-cap (huge/stable), Mid-cap, or Small-cap (growth potential but riskier).",
@@ -34,6 +35,7 @@ function DashboardContent() {
     const [filings, setFilings] = useState<any[]>([]);
     const [news, setNews] = useState<any[]>([]);
     const [financials, setFinancials] = useState<any[]>([]);
+    const [peers, setPeers] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     
     // AI Analysis State
@@ -49,16 +51,18 @@ function DashboardContent() {
         setLoading(true);
         setCompanyInfo(null); // Clear previous info while loading
         try {
-            const [info, secData, newsData, finData] = await Promise.all([
+            const [info, secData, newsData, finData, peerData] = await Promise.all([
                 fetchCompanyInfo(ticker),
                 fetchSECFilings(ticker),
                 fetchCompanyNews(ticker),
-                fetchFinancials(ticker)
+                fetchFinancials(ticker),
+                fetchPeerComparison(ticker)
             ]);
             setCompanyInfo(info);
             setFilings(secData);
             setNews(newsData);
             setFinancials(finData);
+            setPeers(peerData);
         } catch (error) {
             console.error(error);
         } finally {
@@ -372,6 +376,9 @@ function DashboardContent() {
                     <div className="col-span-4 space-y-4">
                         {/* Financial Charts */}
                         <FinancialCharts data={financials} />
+
+                        {/* Peer Comparison */}
+                        <PeerComparison data={peers} ticker={ticker} />
 
                         <Card>
                             <CardHeader className="flex flex-row items-center justify-between">

@@ -11,6 +11,12 @@ def get_company_info(ticker: str):
         raise HTTPException(status_code=404, detail="Company not found")
     return data
 
+@router.get("/peers/{ticker}")
+def get_peer_comparison(ticker: str):
+    data = finance_service.get_peer_comparison(ticker)
+    # Return empty list is fine if no peers found
+    return data
+
 @router.get("/quotes")
 def get_quotes(symbols: str):
     # symbols is a comma separated string "AAPL,MSFT,GOOG"

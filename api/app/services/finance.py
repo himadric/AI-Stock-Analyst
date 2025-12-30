@@ -57,6 +57,7 @@ class FinanceService:
                 "beta": info.get("beta"),
                 "fifty_two_week_low": info.get("fiftyTwoWeekLow"),
                 "fifty_two_week_high": info.get("fiftyTwoWeekHigh"),
+                "revenue_growth": info.get("revenueGrowth"),
                 "year_range": f"{info.get('fiftyTwoWeekLow')} - {info.get('fiftyTwoWeekHigh')}" if info.get('fiftyTwoWeekLow') and info.get('fiftyTwoWeekHigh') else "N/A"
             }
         except Exception as e:
@@ -881,6 +882,118 @@ class FinanceService:
         except Exception as e:
             print(f"Error fetching sector data: {e}")
             return []
+
+    def get_peers(self, ticker: str):
+        """
+        Returns a list of competitor tickers for a given stock.
+        Uses a curated dictionary for major stocks, falling back to a general sector approach if possible (or empty).
+        """
+        peers_map = {
+            # Tech / Mag 7
+            "AAPL": ["MSFT", "GOOGL", "NVDA"],
+            "MSFT": ["AAPL", "GOOGL", "AMZN"],
+            "GOOGL": ["MSFT", "META", "AMZN"],
+            "GOOG": ["MSFT", "META", "AMZN"],
+            "AMZN": ["WMT", "MSFT", "GOOGL"],
+            "NVDA": ["AMD", "INTC", "TSM"],
+            "META": ["GOOGL", "SNAP", "PINS"],
+            "TSLA": ["F", "GM", "TM"],
+            "NFLX": ["DIS", "WBD", "CMCSA"],
+            
+            # Financials
+            "JPM": ["BAC", "WFC", "C"],
+            "BAC": ["JPM", "WFC", "GS"],
+            "GS": ["MS", "JPM", "C"],
+            "V": ["MA", "AXP", "PYPL"],
+            
+            # Retail/Consumer
+            "WMT": ["TGT", "COST", "AMZN"],
+            "KO": ["PEP", "MNST", "KDP"],
+            "PEP": ["KO", "MNST", "KDP"],
+            "NKE": ["ADDYY", "LULU", "UA"],
+            
+            # Energy
+            "XOM": ["CVX", "SHEL", "BP"],
+            "CVX": ["XOM", "SHEL", "COP"],
+            
+            # Pharma
+            "LLY": ["NVO", "JNJ", "PFE"],
+            "JNJ": ["PFE", "MRK", "ABBV"],
+            
+            # Industrial
+            "BA": ["AIR", "LMT", "GE"],
+            "CAT": ["DE", "CMI", "PCAR"],
+        }
+        
+        return peers_map.get(ticker.upper(), [])
+
+    def get_peer_comparison(self, ticker: str):
+        """
+        Fetches key metrics for the target ticker and its peers for comparison.
+        If no direct competitors are found, falls back to the Sector ETF.
+        """
+        # 1. Fetch Target Info first to determine Sector
+        target_info = self.get_company_info(ticker)
+        if not target_info:
+            return []
+            
+        # 2. Try to get direct peers
+        peers = self.get_peers(ticker)
+        
+        # 3. Fallback: Identify Sector ETF if no peers found
+        if not peers:
+            sector = target_info.get('sector', '')
+            sector_etf_map = {
+                "Technology": "XLK",
+                "Financial Services": "XLF",
+                "Healthcare": "XLV",
+                "Energy": "XLE",
+                "Consumer Cyclical": "XLY",
+                "Consumer Defensive": "XLP",
+                "Industrials": "XLI",
+                "Basic Materials": "XLB",
+                "Utilities": "XLU",
+                "Real Estate": "XLRE",
+                "Communication Services": "XLC"
+            }
+            # Fuzzy match or direct lookup
+            # yfinance sectors are usually "Technology", "Financial Services", etc.
+            etf = sector_etf_map.get(sector)
+            if etf:
+                peers = [etf]
+
+        # Comparison group = Target + Peers
+        # We already fetched target_info, so we can optimize, but for simplicity/consistency of structure:
+        comparison_group = [ticker] + peers
+        
+        results = []
+        try:
+            for t in comparison_group:
+                # If it's the target, use the already fetched info
+                if t == ticker:
+                    info = target_info
+                else:
+                    info = self.get_company_info(t)
+                
+                if info:
+                    results.append({
+                        "ticker": t,
+                        "name": info.get("name", t),
+                        "price": info.get("current_price"),
+                        "pe_ratio": info.get("pe_ratio"),
+                        "forward_pe": info.get("forward_pe"),
+                        "peg_ratio": info.get("peg_ratio"),
+                        "price_to_sales": info.get("price_to_sales"),
+                        "profit_margin": info.get("profit_margin"),
+                        "roe": info.get("roe"),
+                        "market_cap": info.get("market_cap"),
+                        "revenue_growth": info.get("revenue_growth"),
+                        "dividend_yield": info.get("dividend_yield")
+                    })
+        except Exception as e:
+            print(f"Error fetching peer analysis: {e}")
+            
+        return results
 
     def _sanitize_data(self, data: any) -> any:
         """

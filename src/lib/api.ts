@@ -8,6 +8,13 @@ export async function fetchCompanyInfo(ticker: string) {
     return res.json();
 }
 
+export async function fetchPeerComparison(ticker: string) {
+    const res = await fetch(`${API_BASE_URL}/finance/peers/${ticker}`);
+    if (!res.ok) throw new Error("Failed to fetch peer data");
+     // Returns list of metrics for peers
+    return res.json();
+}
+
 export async function fetchStockHistory(ticker: string, period: string = "1y", interval: string = "1d") {
     const res = await fetch(`${API_BASE_URL}/finance/history/${ticker}?period=${period}&interval=${interval}`);
     if (!res.ok) throw new Error("Failed to fetch stock history");
