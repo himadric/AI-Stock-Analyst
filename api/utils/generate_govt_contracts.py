@@ -71,6 +71,9 @@ def generate_govt_contract_data():
                         if "Defense" in industry or "Aerospace" in industry:
                             is_contractor = True
                             print(f"    Found Govt Contractor: {ticker} ({industry})")
+                    
+                    # Rate limit for next iteration
+                    time.sleep(1)
                 
                 if not is_contractor:
                     # Skip non-defense

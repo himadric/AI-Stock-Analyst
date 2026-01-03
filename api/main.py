@@ -1,9 +1,10 @@
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from app.api import router
 from dotenv import load_dotenv
 
 load_dotenv()
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from app.api import router
 
 app = FastAPI(title="AI Analyst API", version="0.1.0")
 
