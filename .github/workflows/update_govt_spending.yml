@@ -28,4 +28,4 @@ jobs:
           MONGO_URI: ${{ secrets.MONGO_URI }}
           PYTHONPATH: ${{ github.workspace }}/api
         run: |
-          python api/utils/generate_defense.py
+          python api/utils/generate_govt_contracts.py

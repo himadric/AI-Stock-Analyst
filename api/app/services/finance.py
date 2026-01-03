@@ -8,9 +8,9 @@ from datetime import datetime, timedelta
 from app.db import db
 
 class FinanceService:
-    def get_defense_backlog(self, ticker: str):
+    def get_govt_backlog(self, ticker: str):
         """
-        Calculates Book-to-Bill ratio for defense companies using USAspending API.
+        Calculates Book-to-Bill ratio for govt contractors using USAspending API.
         Book-to-Bill = New Orders (90d) / Quarterly Revenue
         """
         # 1. Resolve Company Name
@@ -24,6 +24,8 @@ class FinanceService:
             "LHX": "L3Harris"
         }
         company_name = ticker_map.get(ticker)
+        
+        # ... logic remains same ...
         
         # Try to guess from YF info if not mapped
         if not company_name:
@@ -106,9 +108,9 @@ class FinanceService:
             "recent_awards": awards_list[:10] # Top 10 for display
         }
 
-    def get_defense_rankings(self, category: str = "Small Cap"):
+    def get_govt_rankings(self, category: str = "Small Cap"):
         """
-        Returns processed defense backlog data from MongoDB.
+        Returns processed govt contractors data from MongoDB.
         """
         cat_map = {
             "Small Cap": "small_cap",
@@ -126,7 +128,7 @@ class FinanceService:
             if doc and "companies" in doc:
                 return doc["companies"]
         except Exception as e:
-            print(f"Error loading defense rankings: {e}")
+            print(f"Error loading govt rankings: {e}")
             
         return []
 
@@ -448,10 +450,7 @@ class FinanceService:
             
             # Sort by date descending and take top 5 (to allow for potential growth calcs or context)
             qf_T.sort_index(ascending=False, inplace=True)
-            recent_qf = qf_T.head(5)
-            
-            # Sort back to ascending for display
-            recent_qf.sort_index(ascending=True, inplace=True)
+            recent_qf = qf_T.head(5).sort_index(ascending=True)
             
             data = []
             for date, row in recent_qf.iterrows():

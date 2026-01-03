@@ -120,13 +120,13 @@ def get_rankings(
 ):
     return finance_service.get_rankings(category, page, limit)
 
-@router.get("/defense/backlog/{ticker}")
-def get_defense_backlog(ticker: str):
-    data = finance_service.get_defense_backlog(ticker)
+@router.get("/govt/backlog/{ticker}")
+def get_govt_backlog(ticker: str):
+    data = finance_service.get_govt_backlog(ticker)
     if not data:
         raise HTTPException(status_code=404, detail="Company or Government Data not found")
     return data
 
 @router.get("/govt/rankings")
-def get_defense_rankings(category: str = "Small Cap"):
-    return finance_service.get_defense_rankings(category)
+def get_govt_rankings(category: str = "Small Cap"):
+    return finance_service.get_govt_rankings(category)

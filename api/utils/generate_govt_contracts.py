@@ -13,13 +13,13 @@ from app.db import db
 DATA_DIR = os.path.join(os.path.dirname(__file__), "../app/data")
 INDICES_FILE = os.path.join(DATA_DIR, "sp_indices.json")
 
-KNOWN_DEFENSE_TICKERS = {
+KNOWN_GOVT_CONTRACTORS = {
     "LMT", "RTX", "GD", "NOC", "BA", "HII", "LHX", "KTOS", "AVAV", "LDOS", 
     "BAH", "SAIC", "CACI", "TXT", "BWXT", "VEC", "CW", "HEI", "TDG", "SPR"
 }
 
-def generate_defense_data():
-    print("Starting Defense Backlog generation...")
+def generate_govt_contract_data():
+    print("Starting Govt Contracts generation...")
     service = FinanceService()
     
     if not os.path.exists(INDICES_FILE):
@@ -46,7 +46,7 @@ def generate_defense_data():
 
         print(f"\nProcessing {category} -> {doc_id} ({len(tickers)} tickers)...")
         
-        defense_companies = []
+        govt_contractors = []
         
         # Optimize: Check known tickers first if we want to skip broad scanning, 
         # but user asked to use sp_indices. So we scan efficiently.
@@ -56,12 +56,12 @@ def generate_defense_data():
             try:
                 # Progress every 10 tickers or valid detections
                 if i % 10 == 0:
-                    print(f"  [{i+1}/{total}] Scanning... (Found {len(defense_companies)})")
+                    print(f"  [{i+1}/{total}] Scanning... (Found {len(govt_contractors)})")
 
                 # 1. Filter Check
-                is_defense = False
-                if ticker in KNOWN_DEFENSE_TICKERS:
-                    is_defense = True
+                is_contractor = False
+                if ticker in KNOWN_GOVT_CONTRACTORS:
+                    is_contractor = True
                 else:
                     # Fetch basic info to check industry
                     # We accept "Aerospace & Defense" as industry
@@ -69,19 +69,19 @@ def generate_defense_data():
                     if info:
                         industry = info.get("industry", "")
                         if "Defense" in industry or "Aerospace" in industry:
-                            is_defense = True
-                            print(f"    Found Defense Co: {ticker} ({industry})")
+                            is_contractor = True
+                            print(f"    Found Govt Contractor: {ticker} ({industry})")
                 
-                if not is_defense:
+                if not is_contractor:
                     # Skip non-defense
                     continue
 
                 # 2. Fetch Backlog Data
                 print(f"    Fetching Backlog for {ticker}...")
-                backlog_data = service.get_defense_backlog(ticker)
+                backlog_data = service.get_govt_backlog(ticker)
                 
                 if backlog_data:
-                    defense_companies.append(backlog_data)
+                    govt_contractors.append(backlog_data)
                     # Rate limit slightly for USAspending
                     time.sleep(1)
 
@@ -89,21 +89,21 @@ def generate_defense_data():
                 print(f"    Error processing {ticker}: {e}")
                 time.sleep(1)
 
-        print(f"  Completed {category}. Found {len(defense_companies)} defense companies.")
+        print(f"  Completed {category}. Found {len(govt_contractors)} contractors.")
 
         # Sort by Ratio? Or total Orders?
         # User approach: "Same as leaderboard". Leaderboard sorts by Score.
         # Here, "Ratio > 1.0" is the buy signal. Sort by Ratio descending.
-        defense_companies.sort(key=lambda x: x["book_to_bill_ratio"], reverse=True)
+        govt_contractors.sort(key=lambda x: x["book_to_bill_ratio"], reverse=True)
         
         # Save to MongoDB
-        print(f"Saving {len(defense_companies)} records to MongoDB ({doc_id})...")
+        print(f"Saving {len(govt_contractors)} records to MongoDB ({doc_id})...")
         try:
             result = collection.update_one(
                 {"_id": doc_id},
                 {
                     "$set": {
-                        "companies": defense_companies,
+                        "companies": govt_contractors,
                         "last_updated": datetime.utcnow()
                     }
                 },
@@ -113,7 +113,7 @@ def generate_defense_data():
         except Exception as e:
             print(f"Error saving to MongoDB: {e}")
 
-    print("\nDefense generation complete.")
+    print("\nGovt Contracts generation complete.")
 
 if __name__ == "__main__":
-    generate_defense_data()
+    generate_govt_contract_data()

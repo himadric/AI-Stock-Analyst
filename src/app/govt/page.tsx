@@ -7,8 +7,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Shield, Loader2, ArrowUpRight, TrendingUp, HelpCircle } from "lucide-react"; // Shield icon for defense
-import { fetchDefenseRankings } from "@/lib/api";
+import { Shield, Loader2, ArrowUpRight, TrendingUp, HelpCircle } from "lucide-react"; // Shield icon for govt
+import { fetchGovtRankings } from "@/lib/api";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 
@@ -39,7 +39,7 @@ function DefenseContent() {
     async function loadRankings(category: string, forceRefresh: boolean = false) {
         setLoading(true);
         try {
-            const data = await fetchDefenseRankings(category);
+            const data = await fetchGovtRankings(category);
             // API returns full array
             setRankings(data || []);
         } catch (e) {
