@@ -3,10 +3,133 @@ import pandas as pd
 import numpy as np
 import os
 import json
+import requests
 from datetime import datetime, timedelta
 from app.db import db
 
 class FinanceService:
+    def get_defense_backlog(self, ticker: str):
+        """
+        Calculates Book-to-Bill ratio for defense companies using USAspending API.
+        Book-to-Bill = New Orders (90d) / Quarterly Revenue
+        """
+        # 1. Resolve Company Name
+        ticker_map = {
+            "LMT": "Lockheed Martin",
+            "RTX": "Raytheon", 
+            "GD": "General Dynamics",
+            "NOC": "Northrop Grumman",
+            "BA": "Boeing",
+            "HII": "Huntington Ingalls",
+            "LHX": "L3Harris"
+        }
+        company_name = ticker_map.get(ticker)
+        
+        # Try to guess from YF info if not mapped
+        if not company_name:
+            info = self.get_company_info(ticker)
+            if info:
+                # Simplistic cleanup: "Lockheed Martin Corporation" -> "Lockheed Martin"
+                raw_name = info.get("name", "")
+                company_name = raw_name.replace(" Corporation", "").replace(" Inc", "").replace(" Company", "").strip()
+
+        if not company_name:
+            return None
+
+        # 2. Fetch USASpending Awards (Orders "Book")
+        # Look back 90 days (approx 1 quarter) to match quarterly revenue cadence
+        days = 90
+        url = "https://api.usaspending.gov/api/v2/search/spending_by_award/"
+        end_date = datetime.now().strftime("%Y-%m-%d")
+        start_date = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
+        
+        payload = {
+            "filters": {
+                "keywords": [company_name],
+                "time_period": [{"start_date": start_date, "end_date": end_date}],
+                "award_type_codes": ["A", "B", "C", "D"]
+            },
+            "fields": ["Award ID", "Recipient Name", "Award Amount", "Description", "Start Date"],
+            "limit": 50, # Get enough to sum meaningful amount
+            "page": 1,
+            "sort": "Start Date",
+            "order": "desc"
+        }
+        
+        orders_total = 0
+        awards_list = []
+        
+        try:
+            res = requests.post(url, json=payload)
+            if res.status_code == 200:
+                data = res.json()
+                results = data.get("results", [])
+                
+                # Sum up ALL awards found in this page (Note: Production should paginate)
+                # For POC, taking top 50 is a proxy, or ideally we fetch aggregate endpoint.
+                # But user asked for "spending_by_award" to see description.
+                # Let's sum the displayed ones.
+                orders_total = sum(item.get("Award Amount", 0) for item in results)
+                
+                for item in results:
+                    awards_list.append({
+                        "id": item.get("Award ID"),
+                        "amount": item.get("Award Amount"),
+                        "date": item.get("Start Date"),
+                        "description": item.get("Description")
+                    })
+        except Exception as e:
+            print(f"Error fetching USASpending: {e}")
+
+        # 3. Fetch Revenue ("Bill")
+        revenue = 0
+        financials = self.get_quarterly_financials(ticker)
+        if financials and len(financials) > 0:
+            # Most recent quarter
+            # Revenue is in dollars (e.g., 15B = 15,000,000,000)
+            revenue = financials[0].get("revenue", 0)
+
+        # 4. Calculate Ratio
+        # Book to Bill = Orders / Revenue
+        book_to_bill = 0
+        if revenue > 0:
+            book_to_bill = orders_total / revenue
+
+        return {
+            "ticker": ticker,
+            "company_name": company_name,
+            "period_days": days,
+            "orders_inflow": orders_total,
+            "revenue_billed": revenue,
+            "book_to_bill_ratio": book_to_bill,
+            "analysis": "Strong Buy (Backlog Growing)" if book_to_bill > 1.0 else "Weak (Backlog Shrinking)",
+            "recent_awards": awards_list[:10] # Top 10 for display
+        }
+
+    def get_defense_rankings(self, category: str = "Small Cap"):
+        """
+        Returns processed defense backlog data from MongoDB.
+        """
+        cat_map = {
+            "Small Cap": "small_cap",
+            "Mid Cap": "mid_cap",
+            "Large Cap": "large_cap"
+        }
+        db_id = cat_map.get(category)
+        if not db_id:
+            return []
+
+        try:
+            mongo_db = db.get_db()
+            collection = mongo_db["govt_contacts"]
+            doc = collection.find_one({"_id": db_id})
+            if doc and "companies" in doc:
+                return doc["companies"]
+        except Exception as e:
+            print(f"Error loading defense rankings: {e}")
+            
+        return []
+
     def _get_peg_ratio(self, info: dict) -> float | None:
         """
         Calculates PEG ratio if missing.

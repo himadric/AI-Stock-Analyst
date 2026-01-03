@@ -29,3 +29,10 @@ jobs:
           PYTHONPATH: ${{ github.workspace }}/api
         run: |
           python api/utils/generate_leaderboard.py
+
+      - name: Run Defense Backlog Generation
+        env:
+          MONGO_URI: ${{ secrets.MONGO_URI }}
+          PYTHONPATH: ${{ github.workspace }}/api
+        run: |
+          python api/utils/generate_defense.py

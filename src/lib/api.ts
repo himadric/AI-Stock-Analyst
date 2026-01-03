@@ -189,3 +189,9 @@ export async function fetchRankings(category: string = "Small Cap", page: number
     if (!res.ok) throw new Error("Failed to fetch rankings");
     return res.json();
 }
+
+export async function fetchDefenseRankings(category: string = "Small Cap") {
+    const res = await fetch(`${API_BASE_URL}/finance/govt/rankings?category=${encodeURIComponent(category)}`);
+    if (!res.ok) throw new Error("Failed to fetch defense rankings");
+    return res.json();
+}
