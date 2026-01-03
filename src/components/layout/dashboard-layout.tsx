@@ -1,6 +1,6 @@
 "use client";
 
-import { BarChart3, FileText, Globe, Home, LayoutDashboard, Search, TrendingUp, Target, Users, Menu } from "lucide-react";
+import { BarChart3, FileText, Globe, Home, LayoutDashboard, Search, TrendingUp, Target, Users, Menu, Trophy } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -23,6 +23,8 @@ export default function DashboardLayout({
     { name: "Chart", href: "/chart", icon: TrendingUp },
     { name: "Forecast", href: "/forecast", icon: Target },
     { name: "Ownership", href: "/ownership", icon: Users },
+    { name: "Finder", href: "/finder", icon: Search },
+    { name: "Rankings", href: "/rankings", icon: Trophy },
     { name: "Macro", href: "/macro", icon: Globe },
   ];
 
@@ -39,19 +41,21 @@ export default function DashboardLayout({
         {navItems.map((item) => {
           const isActive = pathname === item.href;
           return (
-            <Link 
-              key={item.href}
-              href={`${item.href}?ticker=${ticker}`} 
-              className={cn(
-                "flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md transition-colors",
-                isActive 
-                  ? "bg-secondary text-secondary-foreground" 
-                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
-              )}
-            >
-              <item.icon className="h-4 w-4" />
-              {item.name}
-            </Link>
+            <div key={item.href}>
+                {item.name === "Finder" && <div className="my-2 mx-3 border-t border-border" />}
+                <Link 
+                href={`${item.href}?ticker=${ticker}`} 
+                className={cn(
+                    "flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md transition-colors",
+                    isActive 
+                    ? "bg-secondary text-secondary-foreground" 
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                )}
+                >
+                <item.icon className="h-4 w-4" />
+                {item.name}
+                </Link>
+            </div>
           );
         })}
       </nav>

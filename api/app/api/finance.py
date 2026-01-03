@@ -17,6 +17,16 @@ def get_peer_comparison(ticker: str):
     # Return empty list is fine if no peers found
     return data
 
+@router.get("/market-map")
+def get_market_map(map_type: str = "sector"):
+    if map_type == "factor":
+        return finance_service.get_factor_allocations()
+    return finance_service.get_sector_allocations()
+
+@router.get("/historical-metrics/{ticker}")
+def get_historical_metrics(ticker: str):
+    return finance_service.get_historical_metrics(ticker)
+
 @router.get("/quotes")
 def get_quotes(symbols: str):
     # symbols is a comma separated string "AAPL,MSFT,GOOG"
@@ -93,3 +103,19 @@ async def get_ownership(ticker: str):
 @router.get("/ownership/details/{ticker}")
 async def get_ownership_details(ticker: str):
     return finance_service.get_ownership_details(ticker)
+
+@router.get("/score/{ticker}")
+def get_future_leader_score(ticker: str):
+    data = finance_service.get_future_leader_score(ticker)
+    if not data:
+        # Return partial/empty structure or let frontend handle null
+        return None
+    return data
+
+@router.get("/rankings")
+def get_rankings(
+    category: str = "Small Cap",
+    page: int = Query(1, ge=1, description="Page number"),
+    limit: int = Query(10, ge=1, le=100, description="Items per page")
+):
+    return finance_service.get_rankings(category, page, limit)

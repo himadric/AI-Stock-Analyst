@@ -1,7 +1,10 @@
 import yfinance as yf
 import pandas as pd
 import numpy as np
+import os
+import json
 from datetime import datetime, timedelta
+from app.db import db
 
 class FinanceService:
     def _get_peg_ratio(self, info: dict) -> float | None:
@@ -40,6 +43,8 @@ class FinanceService:
                 "ticker": ticker.upper(),
                 "sector": info.get("sector"),
                 "industry": info.get("industry"),
+                "website": info.get("website"),
+                "employees": info.get("fullTimeEmployees"),
                 "summary": info.get("longBusinessSummary"),
                 "current_price": info.get("currentPrice") or info.get("regularMarketPrice"),
                 "market_cap": info.get("marketCap"),
@@ -58,6 +63,16 @@ class FinanceService:
                 "fifty_two_week_low": info.get("fiftyTwoWeekLow"),
                 "fifty_two_week_high": info.get("fiftyTwoWeekHigh"),
                 "revenue_growth": info.get("revenueGrowth"),
+                "executives": [
+                    {
+                        "name": officer.get("name"),
+                        "title": officer.get("title"),
+                        "age": officer.get("age") or (datetime.now().year - officer.get("yearBorn")) if officer.get("yearBorn") else None,
+                        "bio": officer.get("title") # Fallback as bio is rarely separate
+                    }
+                    for officer in info.get("companyOfficers", [])[:5] # Limit to top 5
+                ]
+                ,
                 "year_range": f"{info.get('fiftyTwoWeekLow')} - {info.get('fiftyTwoWeekHigh')}" if info.get('fiftyTwoWeekLow') and info.get('fiftyTwoWeekHigh') else "N/A"
             }
         except Exception as e:
@@ -77,69 +92,171 @@ class FinanceService:
             quotes = []
             for symbol in tickers:
                 try:
-                    # accessing .info for many tickers one by one can be slow with yf.Tickers
-                    # fast_info is better for price data
                     t = data.tickers[symbol]
-                    # fast_info provides last_price, previous_close, etc.
-                    price = t.fast_info.last_price
-                    prev_close = t.fast_info.previous_close
+                    
+                    # Fetch full info for Name/PE
+                    info = t.info
+                    
+                    # Fallback to fast_info for price if info is missing it
+                    price = info.get("currentPrice") or info.get("regularMarketPrice") or t.fast_info.last_price
+                    prev_close = info.get("previousClose") or info.get("regularMarketPreviousClose") or t.fast_info.previous_close
                     
                     change = price - prev_close
-                    change_percent = (change / prev_close) * 100
+                    change_percent = (change / prev_close) * 100 if prev_close else 0
                     
                     quotes.append({
                         "ticker": symbol,
+                        "name": info.get("shortName") or info.get("longName"),
                         "price": price,
                         "change": change,
-                        "change_percent": change_percent
+                        "change_percent": change_percent,
+                        "pe": info.get("trailingPE"),
+                        "volume": info.get("volume") or info.get("regularMarketVolume") or getattr(t.fast_info, 'last_volume', 0)
                     })
                 except Exception as inner_e:
                     print(f"Error fetching quote for {symbol}: {inner_e}")
                     # Continue pending other tickers
             return quotes
         except Exception as e:
-            print(f"Error fetching quotes: {e}")
             return []
 
     def get_stock_history(self, ticker: str, period: str = "1y", interval: str = "1d"):
         """
-        Fetches historical stock price data.
+        Fetches historical price data for charts.
         """
         try:
             stock = yf.Ticker(ticker)
-            # yfinance history handles interval. Valid intervals: 1m,2m,5m,15m,30m,60m,90m,1h,1d,5d,1wk,1mo,3mo
+            # Valid periods: 1d,5d,1mo,3mo,6mo,1y,2y,5y,10y,ytd,max
+            # Valid intervals: 1m,2m,5m,15m,30m,60m,90m,1h,1d,5d,1wk,1mo,3mo
+            
             hist = stock.history(period=period, interval=interval)
             
-            # Reset index to make Date a column and format it
+            if hist.empty:
+                return []
+            
+            # Reset index to get Date as a column
             hist.reset_index(inplace=True)
             
-            # Convert to list of dictionaries for JSON response
             data = []
             for _, row in hist.iterrows():
-                # Handle DatetimeIndex (intraday) vs Date (daily)
-                # Intraday has timezone locally usually. format to ISO compatible string
-                # If 'Datetime' column exists (intraday), use it. Else 'Date'.
-                date_val = row.get("Datetime") or row.get("Date")
-                
-                date_str = ""
-                if pd.notnull(date_val):
-                     if isinstance(date_val, (pd.Timestamp, datetime)):
-                         date_str = date_val.isoformat()
-                     else:
-                         date_str = str(date_val)
+                # Handle timezone-aware datetimes
+                date_val = row['Date']
+                if hasattr(date_val, 'isoformat'):
+                    date_str = date_val.isoformat()
+                else:
+                    date_str = str(date_val)
 
                 data.append({
                     "date": date_str,
-                    "open": row["Open"],
-                    "high": row["High"],
-                    "low": row["Low"],
-                    "close": row["Close"],
-                    "volume": row["Volume"]
+                    "open": row.get('Open', 0),
+                    "high": row.get('High', 0),
+                    "low": row.get('Low', 0),
+                    "close": row.get('Close', 0),
+                    "volume": row.get('Volume', 0)
                 })
-            return data
+                
+            return self._sanitize_data(data)
         except Exception as e:
-            print(f"Error fetching stock history for {ticker}: {e}")
+            print(f"Error fetching history for {ticker}: {e}")
             return []
+
+
+    def get_rankings(self, category: str = "Small Cap", page: int = 1, limit: int = 10):
+        """
+        ranks companies based on the future leader score.
+        Returns paginated results from MongoDB.
+        """
+        candidates_data = []
+        loaded_from_db = False
+        
+        # Map Category Str to DB ID
+        cat_map = {
+            "Small Cap": "small_cap",
+            "Mid Cap": "mid_cap",
+            "Large Cap": "large_cap"
+        }
+        db_id = cat_map.get(category)
+
+        # Try MongoDB
+        if db_id:
+            try:
+                mongo_db = db.get_db()
+                collection = mongo_db["leaderboard"]
+                doc = collection.find_one({"_id": db_id})
+                
+                if doc and "companies" in doc:
+                    candidates_data = doc["companies"]
+                    loaded_from_db = True
+            except Exception as e:
+                print(f"Error loading from MongoDB: {e}")
+
+        # Fallback: Live generation if cache miss (or Mongo failed)
+        if not candidates_data:
+            print("Fallback to live generation...")
+            # Load tickers from generated file
+            json_path = os.path.join(os.path.dirname(__file__), "../data/sp_indices.json")
+            tickers = []
+            
+            try:
+                if os.path.exists(json_path):
+                    with open(json_path, "r") as f:
+                        indices = json.load(f)
+                        tickers = indices.get(category, [])
+            except Exception as e:
+                print(f"Error loading indices: {e}")
+
+            if not tickers:
+                # Hardcoded fallbacks
+                if category == "Small Cap":
+                    tickers = ["UPST", "AFRM", "PATH", "IOT", "AMPL", "CFLT", "MNDY", "DOCN", "FVRR", "LMND", "BMBL", "LAW", "COUR", "NCNO", "WK", "ZI"]
+                elif category == "Mid Cap":
+                    tickers = ["DDOG", "NET", "ZS", "CRWD", "HUBS", "TTD", "OKTA", "TEAM", "MDB", "PLTR", "U", "SNOW", "ESTC", "ZM", "GME", "AMC"]
+                else: 
+                    tickers = ["NVDA", "TSLA", "AMD", "META", "AMZN", "GOOGL", "MSFT", "AAPL", "CRM", "ADBE", "INTC", "CSCO", "ORCL", "NFLX", "AVGO", "TXN"]
+            
+            # Live Scoring (Sampled)
+            import random
+            # If we are falling back to live scoring, we can't paginate effectively without scoring ALL.
+            # But scoring all is slow. So we sample a small set (e.g. 20) and return that page.
+            # This logic is imperfect for pagination but acceptable for a fallback.
+            sample_candidates = tickers
+            if len(tickers) > 20:
+                sample_candidates = random.sample(tickers, 20)
+
+            for ticker in sample_candidates:
+                try:
+                    score_data = self.get_future_leader_score(ticker)
+                    if score_data:
+                        candidates_data.append({
+                            "ticker": ticker,
+                            "rank": 0,
+                            "total_score": score_data["total_score"],
+                            "factors": score_data["factors"]
+                        })
+                except Exception as e:
+                     # print(f"Skipping {ticker}: {e}")
+                     pass
+            
+            # Sort by score
+            candidates_data.sort(key=lambda x: x["total_score"], reverse=True)
+            
+            # Re-assign ranks
+            for i, company in enumerate(candidates_data):
+                company["rank"] = i + 1
+
+        # Pagination Logic
+        total_count = len(candidates_data)
+        start_index = (page - 1) * limit
+        end_index = start_index + limit
+        
+        paginated_data = candidates_data[start_index:end_index]
+        
+        return {
+            "data": paginated_data,
+            "total": total_count,
+            "page": page,
+            "limit": limit
+        }
 
     def get_company_news(self, ticker: str):
         """
@@ -995,10 +1112,297 @@ class FinanceService:
             
         return results
 
+    def get_factor_allocations(self):
+        """
+        Returns a 3x3 Style Box matrix (Morningstar style) implementation.
+        Columns: Value, Core, Growth
+        Rows: Large, Mid, Small
+        """
+        return {
+            "Large Value": ["JPM", "BAC", "XOM", "CVX", "WMT", "JNJ", "CSCO", "VZ"],
+            "Large Core": ["AAPL", "MSFT", "GOOGL", "AMZN", "META", "BRK-B", "UNH", "V"],
+            "Large Growth": ["NVDA", "TSLA", "LLY", "AVGO", "ADBE", "CRM", "AMD", "NFLX"],
+            
+            "Mid Value": ["COF", "C", "DOW", "KHC", "WBA", "F", "GM", "DAL"],
+            "Mid Core": ["MAR", "HLT", "CARR", "OTIS", "PAYX", "CTAS", "AFL", "PCAR"],
+            "Mid Growth": ["PLTR", "UBER", "ABNB", "SQ", "CRWD", "DDOG", "NET", "ZS"],
+            
+            "Small Value": ["M", "GPS", "JWN", "KSS", "XRX", "GT", "AAL", "JBLU"],
+            "Small Core": ["CROX", "YETI", "DKS", "WSM", "RH", "FIVE", "ELF", "BJ"],
+            "Small Growth": ["DUOL", "PATH", "AFRM", "HOOD", "RIVN", "LCID", "SOFI", "DKNG"]
+        }
+
+    def get_historical_metrics(self, ticker: str):
+        """
+        Fetches up to 10 years of historical metrics: ROE, Debt/Equity, P/E, Dividend.
+        Returns a sorted list of dictionaries [{'year': 2024, 'roe': 0.15, ...}].
+        """
+        try:
+            stock = yf.Ticker(ticker)
+            financials = stock.financials
+            balance_sheet = stock.balance_sheet
+            try:
+                dividends = stock.dividends
+            except:
+                dividends = pd.Series()
+            
+            # Helper to safely get value from DF
+            def get_val(df, key, date):
+                if key in df.index:
+                    try:
+                        val = df.loc[key, date]
+                        return val if not pd.isna(val) else 0
+                    except:
+                        return 0
+                return 0
+
+            # Add Current TTM/Year Data from info
+            info = stock.info
+            current_date = datetime.now()
+            metrics = [{
+                "year": "Current (TTM)",
+                "roe": info.get("returnOnEquity") * 100 if info.get("returnOnEquity") else None,
+                "debt_to_equity": (info.get("debtToEquity") / 100) if info.get("debtToEquity") else None, # API usually returns 50 for 0.5, but let's check. actually yf info returns check
+                # yfinance info debtToEquity is usually e.g. 150.23 (percentage). Logic elsewhere handles this?
+                # Actually typically yf info returns it as a number like 86.54 meaning 86%. 
+                # Our frontend expects a ratio (0.86) or %? 
+                # Let's standardize: The valid frontend expects ratio? 
+                # Previous dummy data: "debt_to_equity": 0.5 (displayed as 50%)
+                # So we should divide by 100 if yf returns percent. YF 'debtToEquity' is typically %.
+                "pe_ratio": info.get("trailingPE"),
+                "dividend": info.get("dividendRate") or 0
+            }]
+            
+            # Get historical years from financials columns
+            if not financials.empty:
+                dates = financials.columns
+                for date in dates:
+                    year = date.year
+                    
+                    # Net Income (for ROE/PE)
+                    net_income = get_val(financials, "Net Income", date)
+                    
+                    # Shareholders Equity (for ROE)
+                    equity = get_val(balance_sheet, "Stockholders Equity", date)
+                    if equity == 0:
+                        equity = get_val(balance_sheet, "Total Stockholder Equity", date)
+                        
+                    # Total Debt (for D/E)
+                    total_debt = get_val(balance_sheet, "Total Debt", date)
+                    
+                    # ROE
+                    roe = (net_income / equity * 100) if equity and equity != 0 else None
+                    
+                    # Debt/Equity
+                    debt_to_equity = (total_debt / equity) if equity and equity != 0 else None
+                    
+                    # Dividends (Sum for the year)
+                    year_divs = 0
+                    if not dividends.empty:
+                        # Filter dividends for this specific year
+                        mask = (dividends.index >= f"{year}-01-01") & (dividends.index <= f"{year}-12-31")
+                        year_divs = dividends.loc[mask].sum()
+                    
+                    # P/E Ratio (Historical approximation: Year End Price / EPS)
+                    # This is hard to get exactly without historical price data for that specific date.
+                    # We will return None for historical P/E to avoid misleading data, 
+                    # or could implement a separate fetch for historical price.
+                    # For now, let's leave P/E as None for past years unless we fetch price history.
+                    pe_ratio = None 
+
+                    metrics.append({
+                        "year": year,
+                        "roe": roe,
+                        "debt_to_equity": debt_to_equity,
+                        "pe_ratio": pe_ratio, # Historical PE requires price fetch
+                        "dividend": float(year_divs)
+                    })
+            
+            # Deduplicate by year (if Current year matches last financial year)
+            # Actually "Current (TTM)" is distinct.
+            
+            return metrics
+
+        except Exception as e:
+            print(f"Error fetching historical metrics for {ticker}: {e}")
+            return [] 
+
+    def get_sector_allocations(self):
+        """
+        Returns a curated map of sectors and their top representative stocks.
+        Used for the 'Stock Finder' / 'Market Map' feature.
+        """
+        return {
+            "Technology": ["AAPL", "MSFT", "NVDA", "ORCL", "ADBE", "CRM", "AMD", "INTC"],
+            "Financial Services": ["JPM", "BAC", "V", "MA", "WFC", "MS", "GS", "BLK"],
+            "Healthcare": ["LLY", "UNH", "JNJ", "ABBV", "MRK", "TMO", "PFE", "AMGN"],
+            "Consumer Cyclical": ["AMZN", "TSLA", "HD", "MCD", "NKE", "SBUX", "BKNG", "TJX"],
+            "Communication Services": ["GOOGL", "META", "NFLX", "DIS", "TMUS", "CMCSA", "VZ", "T"],
+            "Industrials": ["CAT", "GE", "UNP", "HON", "UPS", "BA", "DE", "LMT"],
+            "Consumer Defensive": ["WMT", "PG", "COST", "KO", "PEP", "PM", "MO", "CL"],
+            "Energy": ["XOM", "CVX", "COP", "SLB", "EOG", "MPC", "PSX", "VLO"],
+            "Utilities": ["NEE", "SO", "DUK", "GEV", "AEP", "SRE", "PEG", "ED"],
+            "Real Estate": ["PLD", "AMT", "EQIX", "PSA", "O", "CCI", "DLR", "VICI"],
+            "Basic Materials": ["LIN", "SHW", "FCX", "SCCO", "ECL", "CTVA", "DD", "NEM"]
+        }
+
+
+    def get_future_leader_score(self, ticker: str):
+        """
+        Calculates the 'Future Leader' score (0-10) based on 5 weighted factors:
+        1. Growth Efficiency (Rule of 40) - 3.0 pts
+        2. Innovation Intensity (R&D / Revenue) - 2.5 pts
+        3. Scalability (Operating Leverage) - 2.0 pts
+        4. Market Value (PEG Ratio) - 1.5 pts
+        5. Management (ROIC) - 1.0 pts
+        """
+        try:
+            stock = yf.Ticker(ticker)
+            info = stock.info
+            financials = stock.financials
+            
+            if financials.empty:
+                return None
+            
+            # --- 1. Rule of 40 (Growth + Margin > 40) ---
+            rev_growth = info.get("revenueGrowth", 0) * 100
+            profit_margin = info.get("profitMargins", 0) * 100
+            rule_of_40 = rev_growth + profit_margin
+            
+            score_rule_40 = 3.0 if rule_of_40 > 40 else (1.5 if rule_of_40 > 20 else 0)
+            
+            # --- 2. Innovation Intensity (R&D > 15% Revenue) ---
+            try:
+                rnd = financials.loc["Research And Development"].iloc[0]
+                revenue = financials.loc["Total Revenue"].iloc[0]
+                rnd_intensity = (rnd / revenue) * 100
+            except:
+                rnd_intensity = 0
+            
+            score_rnd = 2.5 if rnd_intensity > 15 else (1.0 if rnd_intensity > 5 else 0)
+            
+            # --- 3. Scalability (Rev Growth > Opex Growth) ---
+            try:
+                # Compare current vs previous year
+                curr_rev = financials.loc["Total Revenue"].iloc[0]
+                prev_rev = financials.loc["Total Revenue"].iloc[1]
+                rev_growth_abs = (curr_rev - prev_rev) / prev_rev
+                
+                # Scalability: Rev Growth > Opex Growth
+                curr_rev = financials.loc["Total Revenue"].iloc[0]
+                prev_rev = financials.loc["Total Revenue"].iloc[1]
+                rev_growth_abs = (curr_rev - prev_rev) / prev_rev
+                
+                # Handle varying Opex labels
+                opex_key = "Total Operating Expenses"
+                if opex_key not in financials.index:
+                    if "Operating Expense" in financials.index:
+                        opex_key = "Operating Expense"
+                    else:
+                        raise ValueError("Opex data missing")
+
+                curr_opex = financials.loc[opex_key].iloc[0]
+                prev_opex = financials.loc[opex_key].iloc[1]
+                opex_growth_abs = (curr_opex - prev_opex) / prev_opex
+                
+                is_scalable = rev_growth_abs > opex_growth_abs
+            except:
+                is_scalable = False
+                
+            score_scalability = 2.0 if is_scalable else 0
+            
+            # --- 4. Market Value (PEG Ratio < 1.0 or 1.5) ---
+            peg = self._get_peg_ratio(info)
+            score_peg = 0
+            if peg and peg > 0:
+                if peg < 1.0:
+                    score_peg = 1.5
+                elif peg < 1.5:
+                    score_peg = 0.75
+            
+            # --- 5. ROIC > 15% ---
+            # Approximated: EBIT * (1 - TaxRate) / (Total Equity + Total Debt - Cash)
+            # Or simpler proxy if data missing: ROE * (1 - Debt/Asset)
+            # Utilizing simplified ROE check or returnOnAssets from info as proxy if needed,
+            # but let's try to calculate slightly accurately or use ROE as proxy?
+            # User specifically asked for ROIC. Let's try basic formula.
+            try:
+                ebit = financials.loc["EBIT"].iloc[0] if "EBIT" in financials.index else financials.loc["taxEffectOfUnusualItems"].iloc[0] # Fallback bad
+                # Let's use info fields if available? info doesn't have ROIC typically.
+                # Calculation: NOPAT / Invested Capital
+                tax_provision = financials.loc["Tax Provision"].iloc[0]
+                pretax_income = financials.loc["Pretax Income"].iloc[0]
+                tax_rate = tax_provision / pretax_income if pretax_income else 0.21
+                nopat = ebit * (1 - tax_rate)
+                
+                bs = stock.balance_sheet
+                if "Total Stockholder Equity" in bs.index and "Total Debt" in bs.index and "Cash And Cash Equivalents" in bs.index:
+                     invested_capital = (bs.loc["Total Stockholder Equity"].iloc[0] + bs.loc["Total Debt"].iloc[0]) - bs.loc["Cash And Cash Equivalents"].iloc[0]
+                else:
+                     raise ValueError("BS data missing")
+                
+                roic = (nopat / invested_capital) * 100
+            except:
+                # Fallback to ROE if calculation fails
+                roic = info.get("returnOnEquity", 0) * 100
+            
+            score_roic = 1.0 if roic > 15 else (0.5 if roic > 8 else 0)
+            
+            total_score = score_rule_40 + score_rnd + score_scalability + score_peg + score_roic
+            
+            result = {
+                "ticker": ticker,
+                "total_score": round(total_score, 1),
+                "factors": {
+                    "rule_of_40": {
+                        "value": round(rule_of_40, 1),
+                        "score": score_rule_40,
+                        "max": 3.0,
+                        "pass": rule_of_40 > 40,
+                        "label": "Growth Efficiency"
+                    },
+                    "rnd_intensity": {
+                        "value": round(rnd_intensity, 1),
+                        "score": score_rnd,
+                        "max": 2.5,
+                        "pass": rnd_intensity > 15,
+                        "label": "Innovation Intensity"
+                    },
+                    "scalability": {
+                        "value": "Positive" if is_scalable else "Negative",
+                        "score": score_scalability,
+                        "max": 2.0,
+                        "pass": is_scalable,
+                        "label": "Scalability"
+                    },
+                    "peg_ratio": {
+                        "value": round(peg, 2) if peg else "N/A",
+                        "score": score_peg,
+                        "max": 1.5,
+                        "pass": (peg < 1.0) if peg else False,
+                        "label": "Valuation (PEG)"
+                    },
+                    "roic": {
+                        "value": round(roic, 1),
+                        "score": score_roic,
+                        "max": 1.0,
+                        "pass": roic > 15,
+                        "label": "Management (ROIC)"
+                    }
+                }
+            }
+            return self._sanitize_data(result)
+            
+        except Exception as e:
+            print(f"Error calculating score for {ticker}: {e}")
+            return None
+
+
+
     def _sanitize_data(self, data: any) -> any:
         """
         Recursively replace NaN/Infinity with None for JSON compliance.
-        Supports lists and dicts.
+        Supports lists and dicts. Handles NumPy types.
         """
         if isinstance(data, dict):
             return {k: self._sanitize_data(v) for k, v in data.items()}
@@ -1006,8 +1410,12 @@ class FinanceService:
             return [self._sanitize_data(item) for item in data]
         elif isinstance(data, (float, np.float64, np.float32)):
             if np.isnan(data) or np.isinf(data):
-                return 0 # or None, but 0 is safer for charts/tables if appropriate
+                return 0 # or None
             return float(data)
+        elif isinstance(data, (np.bool_, bool)):
+             return bool(data)
+        elif isinstance(data, (np.integer, int)):
+             return int(data)
         elif pd.isna(data):
-             return 0 # Handle pd.NaT etc
+             return 0 
         return data

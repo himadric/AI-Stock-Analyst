@@ -7,9 +7,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ArrowUpRight, FileText, Loader2, Sparkles, AlertTriangle } from "lucide-react";
-import { fetchCompanyInfo, fetchSECFilings, analyzeFiling, fetchCompanyNews, analyzeNews, fetchFinancials, analyzeValuation, analyzeRisk, fetchPeerComparison } from "@/lib/api";
+import { fetchCompanyInfo, fetchSECFilings, analyzeFiling, fetchCompanyNews, analyzeNews, fetchFinancials, analyzeValuation, analyzeRisk, fetchPeerComparison, fetchHistoricalMetrics, fetchFutureLeaderScore } from "@/lib/api";
 import { FinancialCharts } from "@/components/dashboard/financial-charts";
 import { PeerComparison } from "@/components/dashboard/peer-comparison";
+import { FutureLeaderScore } from "@/components/dashboard/future-leader-score";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 const METRIC_TOOLTIPS = {
     "Market Cap": "The \"Total Value\" of the company. It helps you categorize the stock as a Mega-cap (huge/stable), Mid-cap, or Small-cap (growth potential but riskier).",
@@ -28,7 +30,6 @@ const METRIC_TOOLTIPS = {
 
 function DashboardContent() {
     const searchParams = useSearchParams();
-    // Default to AAPL if no ticker logic provided
     const ticker = searchParams.get("ticker") || "AAPL";
     
     const [companyInfo, setCompanyInfo] = useState<any>(null);
@@ -36,33 +37,38 @@ function DashboardContent() {
     const [news, setNews] = useState<any[]>([]);
     const [financials, setFinancials] = useState<any[]>([]);
     const [peers, setPeers] = useState<any[]>([]);
+    const [historicalMetrics, setHistoricalMetrics] = useState<any[]>([]);
+    const [leaderScore, setLeaderScore] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     
-    // AI Analysis State
-    const [analyzing, setAnalyzing] = useState<string | null>(null); // 'filing' or 'news'
+    const [analyzing, setAnalyzing] = useState<string | null>(null); 
     const [analysisResult, setAnalysisResult] = useState<string | null>(null);
 
     useEffect(() => {
-        setAnalysisResult(null); // Clear previous analysis on ticker change
+        setAnalysisResult(null); 
         loadData();
     }, [ticker]);
 
     async function loadData() {
         setLoading(true);
-        setCompanyInfo(null); // Clear previous info while loading
+        setCompanyInfo(null);
         try {
-            const [info, secData, newsData, finData, peerData] = await Promise.all([
+            const [info, secData, newsData, finData, peerData, metricsData, scoreData] = await Promise.all([
                 fetchCompanyInfo(ticker),
                 fetchSECFilings(ticker),
                 fetchCompanyNews(ticker),
                 fetchFinancials(ticker),
-                fetchPeerComparison(ticker)
+                fetchPeerComparison(ticker),
+                fetchHistoricalMetrics(ticker),
+                fetchFutureLeaderScore(ticker)
             ]);
             setCompanyInfo(info);
             setFilings(secData);
             setNews(newsData);
             setFinancials(finData);
             setPeers(peerData);
+            setHistoricalMetrics(metricsData);
+            setLeaderScore(scoreData);
         } catch (error) {
             console.error(error);
         } finally {
@@ -126,7 +132,7 @@ function DashboardContent() {
         }
     }
 
-    return (
+   return (
         <div className="space-y-6">
             <div className="flex items-center justify-between">
                 <div>
@@ -371,140 +377,242 @@ function DashboardContent() {
                 </div>
                 </TooltipProvider>
 
-                <div className="grid gap-4 grid-cols-1 lg:grid-cols-7">
-                    {/* Main Analysis Area / Charts */}
-                    <div className="col-span-4 space-y-4">
-                        {/* Financial Charts */}
-                        <FinancialCharts data={financials} />
 
-                        {/* Peer Comparison */}
-                        <PeerComparison data={peers} ticker={ticker} />
 
-                        <Card>
-                            <CardHeader className="flex flex-row items-center justify-between">
-                                <div>
-                                    <CardTitle>AI Analysis Engine</CardTitle>
-                                    <CardDescription>Select a filing or click analysis buttons.</CardDescription>
-                                </div>
-                                <div className="flex gap-2">
-                                    <Button 
-                                        size="sm" 
-                                        variant="destructive"
-                                        onClick={handleAnalyzeRisk}
-                                        disabled={analyzing !== null}
-                                    >
-                                        {analyzing === 'risk' ? <Loader2 className="h-4 w-4 animate-spin mr-2"/> : <AlertTriangle className="h-4 w-4 mr-2"/>}
-                                        Red Flag Scanner
-                                    </Button>
-                                    <Button 
-                                        size="sm" 
-                                        variant="outline"
-                                        onClick={handleAnalyzeValuation}
-                                        disabled={analyzing !== null}
-                                    >
-                                        {analyzing === 'valuation' ? <Loader2 className="h-4 w-4 animate-spin mr-2"/> : <Sparkles className="h-4 w-4 mr-2"/>}
-                                        Valuation
-                                    </Button>
-                                </div>
-                            </CardHeader>
-                            <CardContent>
-                                {analysisResult ? (
-                                        <div className="prose dark:prose-invert text-sm">
-                                        <p className="whitespace-pre-line">{analysisResult}</p>
-                                        </div>
-                                ) : analyzing ? (
-                                    <div className="flex flex-col items-center justify-center py-8 text-muted-foreground gap-2">
-                                        <Loader2 className="h-6 w-6 animate-spin" />
-                                        <p>{analyzing === 'news' ? "Analyzing market sentiment..." : analyzing === 'valuation' ? "Generating valuation report..." : "Reading filing..."}</p>
+
+                <Card>
+                    <CardHeader className="flex flex-row items-center justify-between">
+                        <div>
+                            <CardTitle>AI Analysis Engine</CardTitle>
+                            <CardDescription>Select a filing or click analysis buttons.</CardDescription>
+                        </div>
+                        <div className="flex gap-2">
+                            <Button 
+                                size="sm" 
+                                variant="destructive"
+                                onClick={handleAnalyzeRisk}
+                                disabled={analyzing !== null}
+                            >
+                                {analyzing === 'risk' ? <Loader2 className="h-4 w-4 animate-spin mr-2"/> : <AlertTriangle className="h-4 w-4 mr-2"/>}
+                                Red Flag Scanner
+                            </Button>
+                            <Button 
+                                size="sm" 
+                                variant="outline"
+                                onClick={handleAnalyzeValuation}
+                                disabled={analyzing !== null}
+                            >
+                                {analyzing === 'valuation' ? <Loader2 className="h-4 w-4 animate-spin mr-2"/> : <Sparkles className="h-4 w-4 mr-2"/>}
+                                Valuation
+                            </Button>
+                        </div>
+                    </CardHeader>
+                    {(analysisResult || analyzing) && (
+                        <CardContent>
+                            {analysisResult ? (
+                                    <div className="prose dark:prose-invert text-sm">
+                                    <p className="whitespace-pre-line">{analysisResult}</p>
                                     </div>
-                                ) : (
-                                    <div className="flex h-[200px] items-center justify-center text-muted-foreground bg-muted/20 rounded-md border-dashed border-2">
-                                        Waiting for input...
-                                    </div>
-                                )}
-                            </CardContent>
-                        </Card>
-                        
-                        <Card>
-                            <CardHeader>
-                                <CardTitle>Company Summary</CardTitle>
-                            </CardHeader>
-                            <CardContent>
-                                <p className="text-sm text-muted-foreground leading-relaxed">{companyInfo.summary}</p>
-                            </CardContent>
-                        </Card>
+                            ) : (
+                                <div className="flex flex-col items-center justify-center py-8 text-muted-foreground gap-2">
+                                    <Loader2 className="h-6 w-6 animate-spin" />
+                                    <p>{analyzing === 'news' ? "Analyzing market sentiment..." : analyzing === 'valuation' ? "Generating valuation report..." : "Reading filing..."}</p>
+                                </div>
+                            )}
+                        </CardContent>
+                    )}
+                </Card>
 
+                <div className="space-y-4">
+                    {/* Top Row: Charts & Score */}
+                    <div className="grid gap-4 grid-cols-1 lg:grid-cols-7">
+                        <div className="col-span-4">
+                            <FinancialCharts data={financials} />
+                        </div>
+                        <div className="col-span-3">
+                            <FutureLeaderScore data={leaderScore} />
+                        </div>
                     </div>
 
-                    {/* Right Column: Filings & News */}
-                    <div className="col-span-3 space-y-4">
-                        {/* SEC Filings List */}
-                        <Card>
-                            <CardHeader>
-                                <CardTitle>Recent SEC Filings</CardTitle>
-                                <CardDescription>Latest 10-K, 10-Q, 20-F, 6-K</CardDescription>
-                            </CardHeader>
-                            <CardContent>
-                                <div className="space-y-4 max-h-[300px] overflow-y-auto pr-2">
-                                    {filings.length === 0 && <p className="text-muted-foreground text-sm">No recent filings found.</p>}
-                                    {filings.map((filing, i) => (
-                                        <div key={i} className="flex items-center gap-4 p-3 rounded-lg border bg-card hover:bg-accent transition-colors">
-                                            <div className="h-10 w-10 shrink-0 rounded-full bg-primary/10 flex items-center justify-center text-primary">
-                                                <FileText className="h-5 w-5" />
-                                            </div>
-                                            <div className="flex-1 space-y-1 min-w-0">
-                                                <p className="text-sm font-medium leading-none truncate">{filing.form} Report</p>
-                                                <p className="text-xs text-muted-foreground">{filing.filingDate}</p>
-                                            </div>
-                                            <div className="flex gap-2">
-                                                <Button 
-                                                    size="sm" 
-                                                    variant="secondary" 
-                                                    onClick={() => window.open(filing.link, "_blank")}
-                                                >
-                                                    Open
-                                                </Button>
-                                                <Button 
-                                                    size="sm" 
-                                                    onClick={() => handleAnalyzeFiling(filing.link)}
-                                                    disabled={analyzing !== null}
-                                                >
-                                                    {analyzing === filing.link ? <Loader2 className="h-4 w-4 animate-spin"/> : <Sparkles className="h-4 w-4"/>}
-                                                </Button>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            </CardContent>
-                        </Card>
+                    {/* Bottom Row: Detailed Info (2 Columns) */}
+                    <div className="grid gap-4 grid-cols-1 lg:grid-cols-2">
+                        {/* Left Column: Metrics & Info */}
+                        <div className="space-y-4">
+                             {/* Historical Metrics Table */}
+                             <Card>
+                                <CardHeader>
+                                    <CardTitle>Key Metrics (5Y History)</CardTitle>
+                                    <CardDescription>Historical performance trend</CardDescription>
+                                </CardHeader>
+                                <CardContent>
+                                    <Table>
+                                        <TableHeader>
+                                            <TableRow>
+                                                <TableHead>Year</TableHead>
+                                                <TableHead className="text-right">ROE %</TableHead>
+                                                <TableHead className="text-right">Debt/Equity %</TableHead>
+                                                <TableHead className="text-right">P/E Ratio</TableHead>
+                                                <TableHead className="text-right">Dividend</TableHead>
+                                            </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                            {historicalMetrics.map((row) => (
+                                                <TableRow key={row.year}>
+                                                    <TableCell className="font-medium">{row.year}</TableCell>
+                                                    <TableCell className="text-right">{row.roe ? row.roe.toFixed(2) + "%" : "-"}</TableCell>
+                                                    <TableCell className="text-right">{row.debt_to_equity !== null ? (row.debt_to_equity * 100).toFixed(2) + "%" : "-"}</TableCell>
+                                                    <TableCell className="text-right">{row.pe_ratio ? row.pe_ratio.toFixed(2) : "-"}</TableCell>
+                                                    <TableCell className="text-right">{row.dividend ? "$" + row.dividend.toFixed(2) : "-"}</TableCell>
+                                                </TableRow>
+                                            ))}
+                                            {historicalMetrics.length === 0 && (
+                                                <TableRow>
+                                                    <TableCell colSpan={5} className="text-center text-muted-foreground">
+                                                        No historical metrics available
+                                                    </TableCell>
+                                                </TableRow>
+                                            )}
+                                        </TableBody>
+                                    </Table>
+                                </CardContent>
+                            </Card>
 
-                        {/* Recent News List */}
-                        <Card>
-                            <CardHeader className="flex flex-row items-center justify-between">
-                                <div>
-                                    <CardTitle>Recent News</CardTitle>
-                                    <CardDescription>Latest headlines</CardDescription>
-                                </div>
-                                <Button size="sm" variant="outline" onClick={handleAnalyzeNews} disabled={analyzing !== null || news.length === 0}>
-                                    {analyzing === 'news' ? <Loader2 className="h-4 w-4 animate-spin mr-2"/> : <Sparkles className="h-4 w-4 mr-2"/>}
-                                    Summarize
-                                </Button>
-                            </CardHeader>
-                            <CardContent>
-                                <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2">
-                                    {news.length === 0 && <p className="text-muted-foreground text-sm">No recent news found.</p>}
-                                    {news.map((item, i) => (
-                                        <div key={i} className="flex flex-col gap-1 p-3 rounded-lg border bg-card hover:bg-accent transition-colors cursor-pointer" onClick={() => window.open(item.link, "_blank")}>
-                                            <p className="text-sm font-medium leading-snug line-clamp-2">{item.title}</p>
-                                            <div className="flex items-center justify-between text-xs text-muted-foreground mt-1">
-                                                <span>{item.publisher}</span>
-                                                <span>{new Date(item.providerPublishTime * 1000).toLocaleDateString()}</span>
-                                            </div>
+                            <Card>
+                                <CardHeader>
+                                    <CardTitle>Company Summary</CardTitle>
+                                </CardHeader>
+                                <CardContent className="space-y-4">
+                                    <p className="text-sm text-muted-foreground leading-relaxed">{companyInfo.summary}</p>
+                                    
+                                    <div className="grid grid-cols-2 gap-4 pt-2 border-t text-sm">
+                                        <div>
+                                            <span className="text-muted-foreground block text-xs">Sector</span>
+                                            <span className="font-medium">{companyInfo.sector}</span>
                                         </div>
-                                    ))}
-                                </div>
-                            </CardContent>
-                        </Card>
+                                        <div>
+                                            <span className="text-muted-foreground block text-xs">Industry</span>
+                                            <span className="font-medium">{companyInfo.industry}</span>
+                                        </div>
+                                        <div>
+                                            <span className="text-muted-foreground block text-xs">Full-Time Employees</span>
+                                            <span className="font-medium">{companyInfo.employees?.toLocaleString() || "N/A"}</span>
+                                        </div>
+                                        <div>
+                                            <span className="text-muted-foreground block text-xs">Website</span>
+                                            {companyInfo.website ? (
+                                                <a href={companyInfo.website} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline">
+                                                    Visit Website
+                                                </a>
+                                            ) : "N/A"}
+                                        </div>
+                                    </div>
+                                </CardContent>
+                            </Card>
+
+                            <Card>
+                                <CardHeader>
+                                    <CardTitle>Leadership</CardTitle>
+                                </CardHeader>
+                                <CardContent className="p-0">
+                                    <Table>
+                                        <TableHeader>
+                                            <TableRow>
+                                                <TableHead className="h-8">Name</TableHead>
+                                                <TableHead className="h-8">Title</TableHead>
+                                            </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                            {companyInfo.executives?.map((exec: any, i: number) => (
+                                                <TableRow key={i}>
+                                                    <TableCell className="py-2 text-xs font-medium">{exec.name}</TableCell>
+                                                    <TableCell className="py-2 text-xs text-muted-foreground truncate max-w-[120px]" title={exec.title}>
+                                                        {exec.title}
+                                                    </TableCell>
+                                                </TableRow>
+                                            ))}
+                                            {(!companyInfo.executives || companyInfo.executives.length === 0) && (
+                                                <TableRow>
+                                                    <TableCell colSpan={2} className="text-center py-4 text-xs text-muted-foreground">
+                                                        No leadership data available
+                                                    </TableCell>
+                                                </TableRow>
+                                            )}
+                                        </TableBody>
+                                    </Table>
+                                </CardContent>
+                            </Card>
+                        </div>
+
+                        {/* Right Column: Filings & News */}
+                        <div className="space-y-4">
+                             {/* SEC Filings List */}
+                             <Card>
+                                <CardHeader>
+                                    <CardTitle>Recent SEC Filings</CardTitle>
+                                    <CardDescription>Latest 10-K, 10-Q, 20-F, 6-K</CardDescription>
+                                </CardHeader>
+                                <CardContent>
+                                    <div className="space-y-4 max-h-[300px] overflow-y-auto pr-2">
+                                        {filings.length === 0 && <p className="text-muted-foreground text-sm">No recent filings found.</p>}
+                                        {filings.map((filing, i) => (
+                                            <div key={i} className="flex items-center gap-4 p-3 rounded-lg border bg-card hover:bg-accent transition-colors">
+                                                <div className="h-10 w-10 shrink-0 rounded-full bg-primary/10 flex items-center justify-center text-primary">
+                                                    <FileText className="h-5 w-5" />
+                                                </div>
+                                                <div className="flex-1 space-y-1 min-w-0">
+                                                    <p className="text-sm font-medium leading-none truncate">{filing.form} Report</p>
+                                                    <p className="text-xs text-muted-foreground">{filing.filingDate}</p>
+                                                </div>
+                                                <div className="flex gap-2">
+                                                    <Button 
+                                                        size="sm" 
+                                                        variant="secondary" 
+                                                        onClick={() => window.open(filing.link, "_blank")}
+                                                    >
+                                                        Open
+                                                    </Button>
+                                                    <Button 
+                                                        size="sm" 
+                                                        onClick={() => handleAnalyzeFiling(filing.link)}
+                                                        disabled={analyzing !== null}
+                                                    >
+                                                        {analyzing === filing.link ? <Loader2 className="h-4 w-4 animate-spin"/> : <Sparkles className="h-4 w-4"/>}
+                                                    </Button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </CardContent>
+                            </Card>
+
+                            {/* Recent News List */}
+                            <Card>
+                                <CardHeader className="flex flex-row items-center justify-between">
+                                    <div>
+                                        <CardTitle>Recent News</CardTitle>
+                                        <CardDescription>Latest headlines</CardDescription>
+                                    </div>
+                                    <Button size="sm" variant="outline" onClick={handleAnalyzeNews} disabled={analyzing !== null || news.length === 0}>
+                                        {analyzing === 'news' ? <Loader2 className="h-4 w-4 animate-spin mr-2"/> : <Sparkles className="h-4 w-4 mr-2"/>}
+                                        Summarize
+                                    </Button>
+                                </CardHeader>
+                                <CardContent>
+                                    <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2">
+                                        {news.length === 0 && <p className="text-muted-foreground text-sm">No recent news found.</p>}
+                                        {news.map((item, i) => (
+                                            <div key={i} className="flex flex-col gap-1 p-3 rounded-lg border bg-card hover:bg-accent transition-colors cursor-pointer" onClick={() => window.open(item.link, "_blank")}>
+                                                <p className="text-sm font-medium leading-snug line-clamp-2">{item.title}</p>
+                                                <div className="flex items-center justify-between text-xs text-muted-foreground mt-1">
+                                                    <span>{item.publisher}</span>
+                                                    <span>{new Date(item.providerPublishTime * 1000).toLocaleDateString()}</span>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        </div>
                     </div>
                 </div>
                 </>
@@ -522,3 +630,5 @@ export default function DashboardPage() {
         </Suspense>
     );
 }
+
+

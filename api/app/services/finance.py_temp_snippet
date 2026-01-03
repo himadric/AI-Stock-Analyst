@@ -1,0 +1,20 @@
+    def get_factor_allocations(self):
+        """
+        Returns a 3x3 Style Box matrix (Morningstar style) implementation.
+        Columns: Value, Core, Growth
+        Rows: Large, Mid, Small
+        """
+        return {
+            "Large Value": ["JPM", "BAC", "XOM", "CVX", "WMT", "JNJ", "CSCO", "VZ"],
+            "Large Core": ["AAPL", "MSFT", "GOOGL", "AMZN", "META", "BRK-B", "UNH", "V"],
+            "Large Growth": ["NVDA", "TSLA", "LLY", "AVGO", "ADBE", "CRM", "AMD", "NFLX"],
+            
+            "Mid Value": ["COF", "C", "DOW", "KHC", "WBA", "F", "GM", "DAL"],
+            "Mid Core": ["MAR", "HLT", "CARR", "OTIS", "PAYX", "CTAS", "AFL", "PCAR"],
+            "Mid Growth": ["PLTR", "UBER", "ABNB", "SQ", "CRWD", "DDOG", "NET", "ZS"],
+            
+            "Small Value": ["M", "GPS", "JWN", "KSS", "XRX", "GT", "AAL", "JBLU"],
+            "Small Core": ["CROX", "YETI", "DKS", "WSM", "RH", "FIVE", "ELF", "BJ"],
+            "Small Growth": ["DUOL", "PATH", "AFRM", "HOOD", "RIVN", "LCID", "SOFI", "DKNG"]
+        }
+

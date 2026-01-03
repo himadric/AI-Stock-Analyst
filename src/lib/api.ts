@@ -1,6 +1,6 @@
 const API_BASE_URL = process.env.NODE_ENV === "production" 
     ? "/api" 
-    : "http://localhost:8000/api";
+    : "http://127.0.0.1:8000/api";
 
 export async function fetchCompanyInfo(ticker: string) {
     const res = await fetch(`${API_BASE_URL}/finance/info/${ticker}`);
@@ -12,6 +12,18 @@ export async function fetchPeerComparison(ticker: string) {
     const res = await fetch(`${API_BASE_URL}/finance/peers/${ticker}`);
     if (!res.ok) throw new Error("Failed to fetch peer data");
      // Returns list of metrics for peers
+    return res.json();
+}
+
+export async function fetchMarketMap(type: "sector" | "factor" = "sector") {
+    const res = await fetch(`${API_BASE_URL}/finance/market-map?map_type=${type}`);
+    if (!res.ok) throw new Error("Failed to fetch market map");
+    return res.json();
+}
+
+export async function fetchHistoricalMetrics(ticker: string) {
+    const res = await fetch(`${API_BASE_URL}/finance/historical-metrics/${ticker}`);
+    if (!res.ok) throw new Error("Failed to fetch historical metrics");
     return res.json();
 }
 
@@ -163,5 +175,17 @@ export async function analyzeMacroMarket(macro_data: any[], sector_data: any[]) 
         body: JSON.stringify({ macro_data, sector_data }),
     });
     if (!res.ok) throw new Error("Macro analysis failed");
+    return res.json();
+}
+
+export async function fetchFutureLeaderScore(ticker: string) {
+    const res = await fetch(`${API_BASE_URL}/finance/score/${ticker}`);
+    if (!res.ok) return null;
+    return res.json();
+}
+
+export async function fetchRankings(category: string = "Small Cap", page: number = 1, limit: number = 10) {
+    const res = await fetch(`${API_BASE_URL}/finance/rankings?category=${encodeURIComponent(category)}&page=${page}&limit=${limit}`);
+    if (!res.ok) throw new Error("Failed to fetch rankings");
     return res.json();
 }
