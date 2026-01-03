@@ -3,7 +3,9 @@ from pymongo import MongoClient
 import certifi
 
 # User provided connection string
-MONGO_URI = os.getenv("MONGO_URI", "mongodb+srv://himadric_db_user:rJgsq6hxSLWP6YBx@cluster0.e1osub8.mongodb.net/")
+MONGO_URI = os.getenv("MONGO_URI")
+if not MONGO_URI:
+    print("Warning: MONGO_URI not set in environment or .env file")
 DB_NAME = "ai_stock_analyst"
 
 class Database:

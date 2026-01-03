@@ -58,13 +58,19 @@ def generate_leaderboard():
                 score_data = service.get_future_leader_score(ticker)
                 
                 if score_data:
-                    print(f" Score: {score_data['total_score']:.1f}")
-                    ranked_companies.append({
-                        "ticker": ticker,
-                        "rank": 0, 
-                        "total_score": score_data["total_score"],
-                        "factors": score_data["factors"]
-                    })
+                    score = score_data['total_score']
+                    print(f" Score: {score:.1f}", end="")
+                    
+                    if score >= 5:
+                        print(" [Added]")
+                        ranked_companies.append({
+                            "ticker": ticker,
+                            "rank": 0, 
+                            "total_score": score,
+                            "factors": score_data["factors"]
+                        })
+                    else:
+                        print(" [Skipped < 5]")
                 else:
                     print(" No data")
                 
