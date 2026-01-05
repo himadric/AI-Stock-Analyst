@@ -52,7 +52,7 @@ def get_stock_history(
 ):
     data = finance_service.get_stock_history(ticker, period, interval)
     if not data:
-        raise HTTPException(status_code=404, detail="Data not found")
+        return []
     return data
 
 @router.get("/news/{ticker}")
@@ -128,5 +128,6 @@ def get_govt_backlog(ticker: str):
     return data
 
 @router.get("/govt/rankings")
-def get_govt_rankings(category: str = "Small Cap"):
-    return finance_service.get_govt_rankings(category)
+@router.get("/govt/rankings")
+def get_govt_rankings():
+    return finance_service.get_govt_rankings()

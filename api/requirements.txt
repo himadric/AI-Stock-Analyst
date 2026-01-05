@@ -9,3 +9,6 @@ httpx
 uvicorn
 pymongo
 dnspython
+vaderSentiment
+google-api-python-client
+

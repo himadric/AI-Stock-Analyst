@@ -15,7 +15,6 @@ import { cn } from "@/lib/utils";
 function DefenseContent() {
     const [rankings, setRankings] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
-    const [selectedCategory, setSelectedCategory] = useState("Small Cap");
     const [currentPage, setCurrentPage] = useState(1);
     
     // Client-side pagination state
@@ -24,22 +23,15 @@ function DefenseContent() {
     const router = useRouter();
 
     useEffect(() => {
-        loadRankings(selectedCategory);
-    }, [selectedCategory]);
+        loadRankings();
+    }, []);
 
-    const handleCategoryChange = (category: string) => {
-        if (selectedCategory !== category) {
-            setSelectedCategory(category);
-            setCurrentPage(1);
-            setRankings([]); // Clear current data
-            setLoading(true);
-        }
-    };
 
-    async function loadRankings(category: string, forceRefresh: boolean = false) {
+
+    async function loadRankings(forceRefresh: boolean = false) {
         setLoading(true);
         try {
-            const data = await fetchGovtRankings(category);
+            const data = await fetchGovtRankings();
             // API returns full array
             setRankings(data || []);
         } catch (e) {
@@ -50,7 +42,7 @@ function DefenseContent() {
         }
     }
 
-    const categories = ["Small Cap", "Mid Cap", "Large Cap"];
+
 
     const HEADER_TOOLTIPS = {
         "Book-to-Bill": "Ratio of Orders Received (90d) to Revenue Billed (Quarterly). > 1.0 means backlog is growing (Strong Buy).",
@@ -88,22 +80,7 @@ function DefenseContent() {
                 </p>
             </div>
             
-            <div className="flex gap-4">
-                {categories.map((cat) => (
-                    <div 
-                        key={cat}
-                        onClick={() => handleCategoryChange(cat)}
-                        className={cn(
-                            "cursor-pointer px-8 py-3 rounded-xl font-bold text-lg transition-all border shadow-sm", 
-                            selectedCategory === cat 
-                                ? "bg-black text-white hover:bg-gray-800 border-black ring-2 ring-offset-2 ring-black" 
-                                : "bg-white text-black hover:bg-gray-50 border-gray-200"
-                        )}
-                    >
-                        {cat}
-                    </div>
-                ))}
-            </div>
+
 
             <Card>
                 <CardHeader>
@@ -111,13 +88,13 @@ function DefenseContent() {
                         <div>
                             <CardTitle className="flex items-center gap-2">
                                 <Shield className="h-5 w-5 text-blue-600" />
-                                {selectedCategory} Backlog Analysis
+                                Govt Contractor Backlog Analysis
                             </CardTitle>
                             <CardDescription>
                                 Ranked by Book-to-Bill Ratio (USAspending Awards / Financial Revenue)
                             </CardDescription>
                         </div>
-                        <Button variant="outline" size="sm" onClick={() => loadRankings(selectedCategory, true)} disabled={loading}>
+                        <Button variant="outline" size="sm" onClick={() => loadRankings(true)} disabled={loading}>
                             {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2"/> : <TrendingUp className="h-4 w-4 mr-2"/>}
                             Refresh Data
                         </Button>

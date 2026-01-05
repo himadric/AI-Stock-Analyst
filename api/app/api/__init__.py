@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from app.api import health, finance, sec, ai
+from app.api import health, finance, sec, ai, sentiment
 
 router = APIRouter()
 
@@ -7,3 +7,4 @@ router.include_router(health.router, tags=["health"])
 router.include_router(finance.router, prefix="/finance", tags=["finance"])
 router.include_router(sec.router, prefix="/sec", tags=["sec"])
 router.include_router(ai.router, prefix="/ai", tags=["ai"])
+router.include_router(sentiment.router, prefix="/sentiment", tags=["sentiment"])

@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from app.db import db
 
 class FinanceService:
-    def get_govt_backlog(self, ticker: str):
+    def get_govt_backlog(self, ticker: str, uei: str = None):
         """
         Calculates Book-to-Bill ratio for govt contractors using USAspending API.
         Book-to-Bill = New Orders (90d) / Quarterly Revenue
@@ -25,17 +25,15 @@ class FinanceService:
         }
         company_name = ticker_map.get(ticker)
         
-        # ... logic remains same ...
-        
         # Try to guess from YF info if not mapped
         if not company_name:
             info = self.get_company_info(ticker)
             if info:
                 # Simplistic cleanup: "Lockheed Martin Corporation" -> "Lockheed Martin"
-                raw_name = info.get("name", "")
+                raw_name = info.get("name") or ""
                 company_name = raw_name.replace(" Corporation", "").replace(" Inc", "").replace(" Company", "").strip()
 
-        if not company_name:
+        if not company_name and not uei:
             return None
 
         # 2. Fetch USASpending Awards (Orders "Book")
@@ -45,12 +43,19 @@ class FinanceService:
         end_date = datetime.now().strftime("%Y-%m-%d")
         start_date = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
         
+        # Prepare filters
+        filters = {
+            "time_period": [{"start_date": start_date, "end_date": end_date}],
+            "award_type_codes": ["A", "B", "C", "D"]
+        }
+        
+        if uei:
+            filters["recipient_search_text"] = [uei]
+        else:
+             filters["keywords"] = [company_name]
+             
         payload = {
-            "filters": {
-                "keywords": [company_name],
-                "time_period": [{"start_date": start_date, "end_date": end_date}],
-                "award_type_codes": ["A", "B", "C", "D"]
-            },
+            "filters": filters,
             "fields": ["Award ID", "Recipient Name", "Award Amount", "Description", "Start Date"],
             "limit": 50, # Get enough to sum meaningful amount
             "page": 1,
@@ -100,6 +105,7 @@ class FinanceService:
         return {
             "ticker": ticker,
             "company_name": company_name,
+            "uei": uei,
             "period_days": days,
             "orders_inflow": orders_total,
             "revenue_billed": revenue,
@@ -108,23 +114,15 @@ class FinanceService:
             "recent_awards": awards_list[:10] # Top 10 for display
         }
 
-    def get_govt_rankings(self, category: str = "Small Cap"):
+    def get_govt_rankings(self):
         """
-        Returns processed govt contractors data from MongoDB.
+        Returns all govt contractors data from MongoDB.
         """
-        cat_map = {
-            "Small Cap": "small_cap",
-            "Mid Cap": "mid_cap",
-            "Large Cap": "large_cap"
-        }
-        db_id = cat_map.get(category)
-        if not db_id:
-            return []
-
         try:
             mongo_db = db.get_db()
-            collection = mongo_db["govt_contacts"]
-            doc = collection.find_one({"_id": db_id})
+            collection = mongo_db["govt_contracts"] 
+            doc = collection.find_one({"_id": "contractors"})
+            
             if doc and "companies" in doc:
                 return doc["companies"]
         except Exception as e:
@@ -265,7 +263,11 @@ class FinanceService:
             data = []
             for _, row in hist.iterrows():
                 # Handle timezone-aware datetimes
-                date_val = row['Date']
+                date_val = row.get('Date')
+                if date_val is None:
+                    # Intraday data (1d, 5d) often returns 'Datetime'
+                    date_val = row.get('Datetime')
+                
                 if hasattr(date_val, 'isoformat'):
                     date_str = date_val.isoformat()
                 else:
@@ -833,8 +835,15 @@ class FinanceService:
                                         institutions = float(v2)
             
             # Calculate public
-            public = 1.0 - (insiders + institutions)
-            if public < 0: public = 0
+            total_held = insiders + institutions
+            if total_held > 1.0:
+                # Normalize to 100%
+                insiders = insiders / total_held
+                institutions = institutions / total_held
+                public = 0.0
+            else:
+                public = 1.0 - total_held
+                if public < 0: public = 0
             
             return {
                 "insiders": insiders * 100, # Convert to %
@@ -878,7 +887,8 @@ class FinanceService:
                             "shares": row.get('Shares', 0),
                             "date_reported": date_str,
                             "value": row.get('Value', 0),
-                            "pct_held": row.get('pctHeld', 0) if 'pctHeld' in row else 0 # Some versions have it
+                            "pct_held": row.get('pctHeld', 0) if 'pctHeld' in row else 0,
+                            "change_percent": row.get('pctChange', 0)
                         })
             except Exception as e:
                 print(f"Error getting institutions for {ticker}: {e}")
@@ -895,11 +905,12 @@ class FinanceService:
                 else:
                     top_ins = ins_df.head(20)
                     for _, row in top_ins.iterrows():
-                        date_val = row.get('Date') # Usually 'Date' or 'Latest Date'
+                        # Date - prefer 'Position Direct Date' or 'Latest Transaction Date'
+                        date_val = row.get('Position Direct Date') or row.get('Latest Transaction Date') or row.get('Date')
                         date_str = str(date_val) if pd.notnull(date_val) else ""
                         
-                        # Position might be 'Shares' or 'Position'
-                        shares = row.get('Shares', 0)
+                        # Shares - prefer 'Shares Owned Directly'
+                        shares = row.get('Shares Owned Directly') or row.get('Shares') or row.get('Position')
                         
                         # Data cleaning: ensure shares is a number
                         real_shares = 0
@@ -908,12 +919,6 @@ class FinanceService:
                                  real_shares = float(shares)
                              elif isinstance(shares, str) and shares.replace(',','').replace('.','').isdigit():
                                  real_shares = float(shares.replace(',',''))
-                             else:
-                                 # Fallback: Check 'Position' column if it looks like a number?
-                                 # Or check 'Shares Owned Directly' if it exists
-                                 alt = row.get('Shares Owned Directly') or row.get('Position')
-                                 if isinstance(alt, (int, float)) and not pd.isna(alt):
-                                     real_shares = float(alt)
                         except:
                              real_shares = 0
                              
@@ -921,6 +926,7 @@ class FinanceService:
                             "holder": row.get('Name', ''),
                             "shares": real_shares,
                             "position": row.get('Position', '') if isinstance(row.get('Position', ''), str) else str(row.get('Position', '')), 
+                            "transaction": row.get('Most Recent Transaction', ''),
                             "date_reported": date_str,
                             "url": row.get('URL', '')
                         })
@@ -1532,12 +1538,12 @@ class FinanceService:
             return [self._sanitize_data(item) for item in data]
         elif isinstance(data, (float, np.float64, np.float32)):
             if np.isnan(data) or np.isinf(data):
-                return 0 # or None
+                return None
             return float(data)
         elif isinstance(data, (np.bool_, bool)):
              return bool(data)
         elif isinstance(data, (np.integer, int)):
              return int(data)
         elif pd.isna(data):
-             return 0 
+             return None 
         return data

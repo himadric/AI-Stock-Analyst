@@ -1,0 +1,117 @@
+{
+  "LMT": {
+    "uei": "FYHNA5WC8XD7",
+    "name": "LOCKHEED MARTIN CORP",
+    "search_term": "Lockheed Martin"
+  },
+  "RTX": {
+    "uei": "JAXJSTJJSP74",
+    "name": "RTX BBN TECHNOLOGIES, INC.",
+    "search_term": "Raytheon Technologies"
+  },
+  "GD": {
+    "uei": "MWDRZJ2ZVPV7",
+    "name": "GENERAL DYNAMICS MISSION SYSTEMS, INC.",
+    "search_term": "General Dynamics"
+  },
+  "NOC": {
+    "uei": "D8QQPFNYJD63",
+    "name": "NORTHROP GRUMMAN SYSTEMS CORP",
+    "search_term": "Northrop Grumman"
+  },
+  "BA": {
+    "uei": "SML4NN2CT556",
+    "name": "THE BOEING COMPANY",
+    "search_term": "Boeing"
+  },
+  "HII": {
+    "uei": "WMXDDH6HJNA5",
+    "name": "HUNTINGTON INGALLS INC",
+    "search_term": "Huntington Ingalls"
+  },
+  "LHX": {
+    "uei": "LHJPD6T16EV9",
+    "name": "L3HARRIS TECHNOLOGIES, INC.",
+    "search_term": "L3Harris"
+  },
+  "KTOS": {
+    "uei": "XF6AHNQFTXU5",
+    "name": "KRATOS DEFENSE & ROCKET SUPPORT SERVICES, INC.",
+    "search_term": "Kratos Defense"
+  },
+  "AVAV": {
+    "uei": "YJG1MDHLBC88",
+    "name": "AEROVIRONMENT, INC.",
+    "search_term": "AeroVironment"
+  },
+  "LDOS": {
+    "uei": "HV8BH9BPG8Y9",
+    "name": "LEIDOS BIOMEDICAL RESEARCH INC",
+    "search_term": "Leidos"
+  },
+  "BAH": {
+    "uei": "JCBMLGPE6Z71",
+    "name": "BOOZ ALLEN HAMILTON INC",
+    "search_term": "Booz Allen Hamilton"
+  },
+  "SAIC": {
+    "uei": "DDAMULCGG2L7",
+    "name": "BECHTEL SAIC COMPANY, LLC",
+    "search_term": "SAIC"
+  },
+  "CACI": {
+    "uei": "QSRTXLFKV857",
+    "name": "CACI INTERNATIONAL INC",
+    "search_term": "CACI International"
+  },
+  "TXT": {
+    "uei": "HW7JDAG1UYU5",
+    "name": "BELL HELICOPTER TEXTRON INC",
+    "search_term": "Textron"
+  },
+  "BWXT": {
+    "uei": "FFJAX4J2KE25",
+    "name": "COHNREZNICK LLP",
+    "search_term": "BWX Technologies"
+  },
+  "VEC": {
+    "uei": "PQPMBSRE78M5",
+    "name": "ZERO POINT INC",
+    "search_term": "V2X"
+  },
+  "CW": {
+    "uei": "JKZNKGGWYZ87",
+    "name": "CURTISS-WRIGHT ELECTRO-MECHANICAL CORPORATION",
+    "search_term": "Curtiss-Wright"
+  },
+  "HEI": {
+    "uei": "C7RAXD2CDDF1",
+    "name": "HEICO AEROSPACE CORP",
+    "search_term": "Heico"
+  },
+  "TDG": {
+    "uei": "KU8MSC4HELN8",
+    "name": "TRANSDIGM INC",
+    "search_term": "TransDigm"
+  },
+  "SPR": {
+    "uei": "NWPXRE6THD37",
+    "name": "SPIRIT AEROSYSTEMS INC",
+    "search_term": "Spirit AeroSystems"
+  },
+  "GE": {
+    "uei": "E3HYKKLT5ZT1",
+    "name": "GENERAL ELECTRIC COMPANY",
+    "search_term": "General Electric"
+  },
+  "HON": {
+    "uei": "DMEGBYTVBQS5",
+    "name": "HONEYWELL FEDERAL MANUFACTURING & TECHNOLOGIES, LLC",
+    "search_term": "Honeywell"
+  },
+  "PLTR": {
+    "uei": "HNN4F9JZWDY8",
+    "name": "PALANTIR USG INC",
+    "search_term": "Palantir"
+  }
+}

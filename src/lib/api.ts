@@ -190,8 +190,14 @@ export async function fetchRankings(category: string = "Small Cap", page: number
     return res.json();
 }
 
-export async function fetchGovtRankings(category: string = "Small Cap") {
-    const res = await fetch(`${API_BASE_URL}/finance/govt/rankings?category=${encodeURIComponent(category)}`);
+export async function fetchGovtRankings() {
+    const res = await fetch(`${API_BASE_URL}/finance/govt/rankings`);
     if (!res.ok) throw new Error("Failed to fetch govt rankings");
+    return res.json();
+}
+
+export async function fetchSentiment(ticker: string) {
+    const res = await fetch(`${API_BASE_URL}/sentiment/${ticker}`);
+    if (!res.ok) throw new Error("Failed to fetch sentiment data");
     return res.json();
 }

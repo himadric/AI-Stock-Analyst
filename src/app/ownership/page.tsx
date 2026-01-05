@@ -101,7 +101,7 @@ function OwnershipContent() {
             )}
 
             {/* Detailed Tables */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="space-y-8">
                 {/* Institutional Holders */}
                 <Card>
                     <CardHeader>
@@ -117,19 +117,23 @@ function OwnershipContent() {
                                 <TableRow>
                                     <TableHead>Holder</TableHead>
                                     <TableHead className="text-right">Shares</TableHead>
+                                    <TableHead className="text-right">Change %</TableHead>
                                     <TableHead className="text-right">Date Reported</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
                                 {details?.institutions?.length === 0 ? (
                                     <TableRow>
-                                        <TableCell colSpan={3} className="text-center text-muted-foreground">No data available</TableCell>
+                                        <TableCell colSpan={4} className="text-center text-muted-foreground">No data available</TableCell>
                                     </TableRow>
                                 ) : (
                                     details?.institutions?.map((inst: any, i: number) => (
                                         <TableRow key={i}>
                                             <TableCell className="font-medium text-xs md:text-sm">{inst.holder}</TableCell>
                                             <TableCell className="text-right font-mono text-xs md:text-sm">{inst.shares.toLocaleString()}</TableCell>
+                                            <TableCell className={`text-right font-mono text-xs md:text-sm ${inst.change_percent > 0 ? "text-green-600" : inst.change_percent < 0 ? "text-red-600" : ""}`}>
+                                                {inst.change_percent ? (inst.change_percent * 100).toFixed(2) + "%" : "-"}
+                                            </TableCell>
                                             <TableCell className="text-right text-muted-foreground text-xs">{new Date(inst.date_reported).toLocaleDateString()}</TableCell>
                                         </TableRow>
                                     ))
@@ -153,20 +157,24 @@ function OwnershipContent() {
                             <TableHeader>
                                 <TableRow>
                                     <TableHead>Name</TableHead>
+                                    <TableHead>Title</TableHead>
                                     <TableHead className="text-right">Shares Owned</TableHead>
+                                    <TableHead className="text-right">Transaction</TableHead>
                                     <TableHead className="text-right">Date</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
                                 {details?.insiders?.length === 0 ? (
                                     <TableRow>
-                                        <TableCell colSpan={3} className="text-center text-muted-foreground">No data available</TableCell>
+                                        <TableCell colSpan={5} className="text-center text-muted-foreground">No data available</TableCell>
                                     </TableRow>
                                 ) : (
                                     details?.insiders?.map((ins: any, i: number) => (
                                         <TableRow key={i}>
                                             <TableCell className="font-medium text-xs md:text-sm">{ins.holder}</TableCell>
+                                            <TableCell className="text-xs text-muted-foreground truncate max-w-[150px]" title={ins.position}>{ins.position || "-"}</TableCell>
                                             <TableCell className="text-right font-mono text-xs md:text-sm">{ins.shares.toLocaleString()}</TableCell>
+                                            <TableCell className="text-right text-xs md:text-sm">{ins.transaction || "-"}</TableCell>
                                             <TableCell className="text-right text-muted-foreground text-xs">{ins.date_reported ? new Date(ins.date_reported).toLocaleDateString() : "-"}</TableCell>
                                         </TableRow>
                                     ))

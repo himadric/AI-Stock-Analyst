@@ -1,0 +1,135 @@
+{
+  "nss": 30.0,
+  "distribution": {
+    "positive": 6,
+    "negative": 3,
+    "neutral": 1,
+    "total": 10
+  },
+  "emotions": {
+    "Admiration": 4,
+    "Trust": 2,
+    "Frustration": 1,
+    "Sarcasm": 2
+  },
+  "keywords": [
+    [
+      "high",
+      2
+    ],
+    [
+      "they",
+      2
+    ],
+    [
+      "love",
+      1
+    ],
+    [
+      "cloudmonsters",
+      1
+    ],
+    [
+      "best",
+      1
+    ],
+    [
+      "running",
+      1
+    ],
+    [
+      "shoes",
+      1
+    ],
+    [
+      "ive",
+      1
+    ],
+    [
+      "ever",
+      1
+    ],
+    [
+      "owned",
+      1
+    ]
+  ],
+  "comments": [
+    {
+      "text": "I love my cloudmonsters, best running shoes I've ever owned. $ONON to the moon!",
+      "score": 3,
+      "label": "Positive",
+      "emotions": [
+        "Sarcasm",
+        "Admiration"
+      ]
+    },
+    {
+      "text": "Is ONON overvalued specifically? P/E seems high but growth is crazy.",
+      "score": 1,
+      "label": "Positive",
+      "emotions": [
+        "Trust"
+      ]
+    },
+    {
+      "text": "Their D2C margins are impressive. I think they can double market cap in 2 years.",
+      "score": 1,
+      "label": "Positive",
+      "emotions": [
+        "Admiration"
+      ]
+    },
+    {
+      "text": "Terrible durability on the Cloudflow. Start ripping after 200 miles.",
+      "score": -2,
+      "label": "Negative",
+      "emotions": [
+        "Frustration"
+      ]
+    },
+    {
+      "text": "Roger Federer backed? Take my money.",
+      "score": 1,
+      "label": "Positive",
+      "emotions": [
+        "Trust"
+      ]
+    },
+    {
+      "text": "Just bought more shares on the dip. Q4 earnings should be a beat.",
+      "score": 1,
+      "label": "Positive",
+      "emotions": []
+    },
+    {
+      "text": "Hype over substance. They look cool but perform average.",
+      "score": -1,
+      "label": "Negative",
+      "emotions": [
+        "Sarcasm",
+        "Admiration"
+      ]
+    },
+    {
+      "text": "The new collaboration with Loewe is pure fire. High fashion meets performance.",
+      "score": 3,
+      "label": "Positive",
+      "emotions": [
+        "Admiration"
+      ]
+    },
+    {
+      "text": "Concerned about inventory buildup. Anyone looked at the balance sheet?",
+      "score": 0,
+      "label": "Neutral",
+      "emotions": []
+    },
+    {
+      "text": "Shorting this. Consumer spending is drying up.",
+      "score": -1,
+      "label": "Negative",
+      "emotions": []
+    }
+  ]
+}
