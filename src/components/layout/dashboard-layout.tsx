@@ -24,6 +24,7 @@ export default function DashboardLayout({
     { name: "Forecast", href: "/forecast", icon: Target },
     { name: "Ownership", href: "/ownership", icon: Users },
     { name: "Brand Sentiment", href: "/sentiment", icon: Users },
+    { name: "Vanguard Tracker", href: "/vanguard", icon: BarChart3 },
     { name: "Finder", href: "/finder", icon: Search },
     { name: "Rankings", href: "/rankings", icon: Trophy },
     { name: "Govt Spending Tracker", href: "/govt", icon: Shield },

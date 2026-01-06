@@ -196,8 +196,21 @@ export async function fetchGovtRankings() {
     return res.json();
 }
 
+// Sentiment
 export async function fetchSentiment(ticker: string) {
-    const res = await fetch(`${API_BASE_URL}/sentiment/${ticker}`);
-    if (!res.ok) throw new Error("Failed to fetch sentiment data");
+  const res = await fetch(`${API_BASE_URL}/sentiment/${ticker}`);
+  if (!res.ok) {
+     if (res.status === 404) return null;
+     throw new Error("Failed to fetch sentiment");
+  }
+  return res.json();
+}
+
+// Vanguard Tracker
+export async function fetchVanguardTrades() {
+    const res = await fetch(`${API_BASE_URL}/vanguard/trades`);
+    if (!res.ok) {
+        throw new Error("Failed to fetch vanguard trades");
+    }
     return res.json();
 }
