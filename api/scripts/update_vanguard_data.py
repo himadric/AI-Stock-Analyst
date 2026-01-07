@@ -1,12 +1,13 @@
 import sys
 import os
 import json
-from datetime import datetime
-from pymongo import MongoClient
-from dotenv import load_dotenv
-
-# Load env from .env file (for local run)
-load_dotenv()
+try:
+    from dotenv import load_dotenv
+    # Load env from .env file (for local run)
+    load_dotenv()
+except ImportError:
+    # In CI/Production, env vars are likely injected directly, so dotenv is optional
+    pass
 
 # Add parent directory to path to import app modules
 api_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
