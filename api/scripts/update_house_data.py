@@ -24,9 +24,9 @@ def update_house_db():
         print("Error: FMP_API_KEY not found in environment variables.")
         sys.exit(1)
 
-    # Fetch only page 0 (limit 25) due to Free Tier restriction
-    print(f"Fetching US House trades (limit 25)...")
-    url = f"https://financialmodelingprep.com/stable/house-latest?apikey={api_key}&limit=10" # Max allowed for free tier (safe)
+    # Try to fetch 100 records as requested
+    print(f"Fetching US House trades (limit 100)...")
+    url = f"https://financialmodelingprep.com/stable/house-latest?apikey={api_key}&limit=100"
     
     new_data = []
     try:
@@ -34,6 +34,16 @@ def update_house_db():
         if res.status_code == 200:
             new_data = res.json()
             print(f"Fetched {len(new_data)} new records.")
+        elif res.status_code == 402:
+             print("Limit 100 failed (Premium restricted). Falling back to limit=10 (Safe Mode)...")
+             url = f"https://financialmodelingprep.com/stable/house-latest?apikey={api_key}&limit=10"
+             res = requests.get(url)
+             if res.status_code == 200:
+                 new_data = res.json()
+                 print(f"Fetched {len(new_data)} new records (fallback).")
+             else:
+                 print(f"Fallback failed: {res.status_code} {res.text}")
+                 sys.exit(1)
         else:
             print(f"Error fetching data: {res.status_code} {res.text}")
             sys.exit(1)
