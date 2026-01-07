@@ -45,19 +45,27 @@ class InstitutionService:
             import os
             from pymongo import MongoClient
             uri = os.environ.get("MONGO_URI") or os.environ.get("MONGODB_URI")
-            if not uri: return None
+            if not uri: 
+                print("DEBUG: No MONGO_URI found in env.")
+                return None
             
+            print("DEBUG: Attempting to connect to MongoDB...")
             client = MongoClient(uri, serverSelectionTimeoutMS=2000)
             db = client["ai_stock_analyst"]
             col = db["vanguard_tracker"]
             
             # Fetch Docs
+            buy_count = col.count_documents({"type": "buy"})
+            print(f"DEBUG: Found {buy_count} buy docs in DB.")
+            
             buy_doc = col.find_one({"type": "buy"})
             sell_doc = col.find_one({"type": "sell"})
             
             if not buy_doc or not sell_doc:
+                print("DEBUG: Buy or Sell doc missing in DB.")
                 return None
             
+            print("DEBUG: Successfully loaded data from DB.")
             return {
                 "report_date": buy_doc.get("report_date"),
                 "prev_report_date": buy_doc.get("prev_report_date"),

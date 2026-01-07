@@ -1,6 +1,6 @@
 "use client";
 
-import { BarChart3, FileText, Globe, Home, LayoutDashboard, Search, TrendingUp, Target, Users, Menu, Trophy, Shield } from "lucide-react";
+import { BarChart3, FileText, Globe, Home, LayoutDashboard, Search, TrendingUp, Target, Users, Menu, Trophy, Shield, Landmark } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -25,6 +25,8 @@ export default function DashboardLayout({
     { name: "Ownership", href: "/ownership", icon: Users },
     { name: "Brand Sentiment", href: "/sentiment", icon: Users },
     { name: "Vanguard Tracker", href: "/vanguard", icon: BarChart3 },
+    { name: "Congress Tracker", href: "/congress", icon: Landmark },
+    { name: "US House Tracker", href: "/house", icon: Landmark },
     { name: "Finder", href: "/finder", icon: Search },
     { name: "Rankings", href: "/rankings", icon: Trophy },
     { name: "Govt Spending Tracker", href: "/govt", icon: Shield },

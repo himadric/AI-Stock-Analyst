@@ -207,10 +207,28 @@ export async function fetchSentiment(ticker: string) {
 }
 
 // Vanguard Tracker
-export async function fetchVanguardTrades() {
-    const res = await fetch(`${API_BASE_URL}/vanguard/trades`);
+export async function fetchVanguardTrades(limit: number = 100) {
+    const res = await fetch(`${API_BASE_URL}/vanguard/trades?limit=${limit}`);
     if (!res.ok) {
         throw new Error("Failed to fetch vanguard trades");
+    }
+    return res.json();
+}
+
+// Congress Tracker
+export async function fetchCongressTrades(limit: number = 100) {
+    const res = await fetch(`${API_BASE_URL}/congress/trades?limit=${limit}`);
+    if (!res.ok) {
+        throw new Error("Failed to fetch congress trades");
+    }
+    return res.json();
+}
+
+// US House Tracker
+export async function fetchHouseTrades() {
+    const res = await fetch(`${API_BASE_URL}/house/trades`);
+    if (!res.ok) {
+        throw new Error("Failed to fetch house trades");
     }
     return res.json();
 }

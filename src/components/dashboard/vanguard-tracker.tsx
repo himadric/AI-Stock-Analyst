@@ -83,24 +83,25 @@ export function VanguardTracker() {
             </div>
 
             <div className="grid gap-6 md:grid-cols-2">
-                <Card>
+
+                <Card className="h-[600px] flex flex-col">
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2 text-green-600">
-                            <ArrowUp className="h-5 w-5" /> Top 10 Buys (Share Count)
+                            <ArrowUp className="h-5 w-5" /> Top Buys (Share Count)
                         </CardTitle>
                     </CardHeader>
-                    <CardContent>
+                    <CardContent className="flex-1 overflow-auto">
                         <TradeTable trades={data.top_buys} type="buy" />
                     </CardContent>
                 </Card>
 
-                <Card>
+                <Card className="h-[600px] flex flex-col">
                     <CardHeader>
                          <CardTitle className="flex items-center gap-2 text-red-600">
-                            <ArrowDown className="h-5 w-5" /> Top 10 Sells (Share Count)
+                            <ArrowDown className="h-5 w-5" /> Top Sells (Share Count)
                         </CardTitle>
                     </CardHeader>
-                    <CardContent>
+                    <CardContent className="flex-1 overflow-auto">
                         <TradeTable trades={data.top_sells} type="sell" />
                     </CardContent>
                 </Card>
