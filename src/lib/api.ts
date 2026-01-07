@@ -232,3 +232,12 @@ export async function fetchHouseTrades() {
     }
     return res.json();
 }
+
+// US Senate Tracker
+export async function fetchSenateTrades() {
+    const res = await fetch(`${API_BASE_URL}/senate/trades`);
+    if (!res.ok) {
+        throw new Error("Failed to fetch senate trades");
+    }
+    return res.json();
+}

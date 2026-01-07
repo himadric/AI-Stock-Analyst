@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from app.api import health, finance, sec, ai, sentiment, institution, congress, house
+from app.api import health, finance, sec, ai, sentiment, institution, congress, house, senate
 
 router = APIRouter()
 
@@ -11,3 +11,5 @@ router.include_router(sentiment.router, prefix="/sentiment", tags=["sentiment"])
 router.include_router(institution.router, prefix="/vanguard", tags=["vanguard"])
 router.include_router(congress.router, prefix="/congress", tags=["congress"])
 router.include_router(house.router, prefix="/house", tags=["house"])
+router.include_router(senate.router, prefix="/senate", tags=["senate"])
+

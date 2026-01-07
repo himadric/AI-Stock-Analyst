@@ -27,6 +27,7 @@ export default function DashboardLayout({
     { name: "Vanguard Tracker", href: "/vanguard", icon: BarChart3 },
     { name: "Congress Tracker", href: "/congress", icon: Landmark },
     { name: "US House Tracker", href: "/house", icon: Landmark },
+    { name: "US Senate Tracker", href: "/senate", icon: Landmark },
     { name: "Finder", href: "/finder", icon: Search },
     { name: "Rankings", href: "/rankings", icon: Trophy },
     { name: "Govt Spending Tracker", href: "/govt", icon: Shield },
