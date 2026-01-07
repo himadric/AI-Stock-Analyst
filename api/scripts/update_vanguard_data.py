@@ -38,7 +38,8 @@ def update_db():
         sys.exit(1)
         
     client = MongoClient(uri)
-    db = client.get_default_database()
+    # Explicitly use the database name provided by user
+    db = client["ai_stock_analyst"]
     collection = db["vanguard_tracker"]
     
     # Prepare documents

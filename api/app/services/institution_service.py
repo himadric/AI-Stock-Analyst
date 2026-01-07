@@ -48,7 +48,7 @@ class InstitutionService:
             if not uri: return None
             
             client = MongoClient(uri, serverSelectionTimeoutMS=2000)
-            db = client.get_default_database()
+            db = client["ai_stock_analyst"]
             col = db["vanguard_tracker"]
             
             # Fetch Docs
