@@ -24,17 +24,20 @@ def update_house_db():
         print("Error: FMP_API_KEY not found in environment variables.")
         sys.exit(1)
 
-    url = f"https://financialmodelingprep.com/stable/house-latest?apikey={api_key}&limit=10"
+    # Fetch only page 0 (limit 25) due to Free Tier restriction
+    print(f"Fetching US House trades (limit 25)...")
+    url = f"https://financialmodelingprep.com/stable/house-latest?apikey={api_key}&limit=10" # Max allowed for free tier (safe)
     
+    new_data = []
     try:
         res = requests.get(url)
-        if res.status_code != 200:
+        if res.status_code == 200:
+            new_data = res.json()
+            print(f"Fetched {len(new_data)} new records.")
+        else:
             print(f"Error fetching data: {res.status_code} {res.text}")
             sys.exit(1)
             
-        data = res.json()
-        print(f"Fetched {len(data)} records.")
-        
     except Exception as e:
         print(f"Network error: {e}")
         sys.exit(1)
@@ -46,22 +49,55 @@ def update_house_db():
         sys.exit(1)
         
     client = MongoClient(uri)
-    # Explicit connection to ai_stock_analyst
     db = client["ai_stock_analyst"]
     collection = db["house_tracker"]
     
-    # We will store this as a single document for "recent trades" to match Vanguard pattern
-    # This makes frontend fetching very simple (one doc)
+    # ACCUMULATION STRATEGY
+    # 1. Get existing data
+    existing_doc = collection.find_one({"type": "recent_trades"})
+    existing_data = existing_doc.get("data", []) if existing_doc else []
     
+    # 2. Merge and Deduplicate
+    # Create a set of unique identifiers (e.g. disclosureDate + ticker + transactionDate + amount)
+    # Link is best if unique, but some might be missing.
+    # We'll use a composite key string.
+    
+    seen = set()
+    cleaned_data = []
+    
+    # Helper to generate ID
+    def get_id(item):
+        return f"{item.get('disclosureDate')}|{item.get('transactionDate')}|{item.get('symbol')}|{item.get('amount')}|{item.get('firstName')}"
+
+    # Add new items first (to update/ensure they are in)
+    for item in new_data:
+        uid = get_id(item)
+        if uid not in seen:
+            seen.add(uid)
+            cleaned_data.append(item)
+            
+    # Add existing items if not duplicates
+    for item in existing_data:
+        uid = get_id(item)
+        if uid not in seen:
+            seen.add(uid)
+            cleaned_data.append(item)
+            
+    # Sort by disclosureDate descending
+    cleaned_data.sort(key=lambda x: x.get('disclosureDate', ''), reverse=True)
+    
+    # Optional: Trim to e.g. 1000 items to prevent infinite growth
+    cleaned_data = cleaned_data[:1000]
+
     doc = {
         "type": "recent_trades",
         "updated_at": datetime.utcnow(),
-        "source": "FMP stable/house-latest",
-        "count": len(data),
-        "data": data 
+        "source": "FMP stable/house-latest (Accumulating)",
+        "count": len(cleaned_data),
+        "data": cleaned_data
     }
     
-    print(f"Upserting to MongoDB collection 'house_tracker'...")
+    print(f"Upserting {len(cleaned_data)} accumulated records to MongoDB...")
     
     result = collection.replace_one(
         {"type": "recent_trades"},
