@@ -25,6 +25,6 @@ jobs:
         
     - name: Run Update Script
       env:
-        MONGODB_URI: ${{ secrets.MONGODB_URI }}
+        MONGODB_URI: ${{ secrets.MONGO_URI }}
       run: |
         python api/scripts/update_vanguard_data.py

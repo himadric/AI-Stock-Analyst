@@ -44,7 +44,7 @@ class InstitutionService:
         try:
             import os
             from pymongo import MongoClient
-            uri = os.environ.get("MONGODB_URI")
+            uri = os.environ.get("MONGO_URI") or os.environ.get("MONGODB_URI")
             if not uri: return None
             
             client = MongoClient(uri, serverSelectionTimeoutMS=2000)

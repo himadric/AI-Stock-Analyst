@@ -3,6 +3,10 @@ import os
 import json
 from datetime import datetime
 from pymongo import MongoClient
+from dotenv import load_dotenv
+
+# Load env from .env file (for local run)
+load_dotenv()
 
 # Add parent directory to path to import app modules
 api_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -25,9 +29,9 @@ def update_db():
     print(f"Fetch complete. Report Date: {data.get('report_date')}")
     
     # MongoDB Connection
-    uri = os.environ.get("MONGODB_URI")
+    uri = os.environ.get("MONGO_URI") or os.environ.get("MONGODB_URI")
     if not uri:
-        print("MONGODB_URI not found in environment variables.")
+        print("MONGO_URI not found in environment variables.")
         sys.exit(1)
         
     client = MongoClient(uri)
