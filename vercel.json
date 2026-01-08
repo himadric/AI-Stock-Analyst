@@ -2,39 +2,39 @@
   "rewrites": [
     {
       "source": "/api/finance/:path*",
-      "destination": "/api/py"
+      "destination": "/api/python"
     },
     {
       "source": "/api/sec/:path*",
-      "destination": "/api/py"
+      "destination": "/api/python"
     },
     {
       "source": "/api/ai/:path*",
-      "destination": "/api/py"
+      "destination": "/api/python"
     },
     {
       "source": "/api/sentiment/:path*",
-      "destination": "/api/py"
+      "destination": "/api/python"
     },
     {
       "source": "/api/vanguard/:path*",
-      "destination": "/api/py"
+      "destination": "/api/python"
     },
     {
       "source": "/api/congress/:path*",
-      "destination": "/api/py"
+      "destination": "/api/python"
     },
     {
       "source": "/api/house/:path*",
-      "destination": "/api/py"
+      "destination": "/api/python"
     },
     {
       "source": "/api/senate/:path*",
-      "destination": "/api/py"
+      "destination": "/api/python"
     },
     {
       "source": "/api/health",
-      "destination": "/api/py"
+      "destination": "/api/python"
     }
   ]
 }
