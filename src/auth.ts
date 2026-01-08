@@ -3,6 +3,7 @@ import Google from "next-auth/providers/google"
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   debug: true,
+  basePath: "/auth_endpoints",
   providers: [Google],
   callbacks: {
     async signIn({ user }) {
