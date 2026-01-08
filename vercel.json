@@ -2,39 +2,39 @@
   "rewrites": [
     {
       "source": "/api/finance/:path*",
-      "destination": "/python_backend/index"
+      "destination": "/api/index"
     },
     {
       "source": "/api/sec/:path*",
-      "destination": "/python_backend/index"
+      "destination": "/api/index"
     },
     {
       "source": "/api/ai/:path*",
-      "destination": "/python_backend/index"
+      "destination": "/api/index"
     },
     {
       "source": "/api/sentiment/:path*",
-      "destination": "/python_backend/index"
+      "destination": "/api/index"
     },
     {
       "source": "/api/vanguard/:path*",
-      "destination": "/python_backend/index"
+      "destination": "/api/index"
     },
     {
       "source": "/api/congress/:path*",
-      "destination": "/python_backend/index"
+      "destination": "/api/index"
     },
     {
       "source": "/api/house/:path*",
-      "destination": "/python_backend/index"
+      "destination": "/api/index"
     },
     {
       "source": "/api/senate/:path*",
-      "destination": "/python_backend/index"
+      "destination": "/api/index"
     },
     {
       "source": "/api/health",
-      "destination": "/python_backend/index"
+      "destination": "/api/index"
     }
   ]
 }
