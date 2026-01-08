@@ -397,6 +397,8 @@ class FinanceService:
             for item in news[:4]:
                 # Check for nested 'content' key
                 news_data = item.get('content', item)
+                if not news_data:
+                    continue
                 
                 # Extract fields safely
                 title = news_data.get('title', 'No Title')
@@ -452,7 +454,8 @@ class FinanceService:
             
             # Sort by date descending and take top 5 (to allow for potential growth calcs or context)
             qf_T.sort_index(ascending=False, inplace=True)
-            recent_qf = qf_T.head(5).sort_index(ascending=True)
+            recent_qf = qf_T.head(5).copy()
+            recent_qf.sort_index(ascending=True, inplace=True)
             
             data = []
             for date, row in recent_qf.iterrows():
@@ -497,7 +500,7 @@ class FinanceService:
             
             # Sort by date descending and take top 5
             qbs_T.sort_index(ascending=False, inplace=True)
-            recent_qbs = qbs_T.head(5)
+            recent_qbs = qbs_T.head(5).copy()
             
             # Sort back to ascending for display consistency
             recent_qbs.sort_index(ascending=True, inplace=True)
@@ -540,7 +543,7 @@ class FinanceService:
             
             # Sort by date descending and take top 5
             qcf_T.sort_index(ascending=False, inplace=True)
-            recent_qcf = qcf_T.head(5)
+            recent_qcf = qcf_T.head(5).copy()
             
             # Sort back to ascending for display consistency
             recent_qcf.sort_index(ascending=True, inplace=True)

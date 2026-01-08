@@ -2,6 +2,7 @@ import NextAuth from "next-auth"
 import Google from "next-auth/providers/google"
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
+  debug: true,
   providers: [Google],
   callbacks: {
     async signIn({ user }) {
@@ -13,5 +14,16 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   },
   pages: {
     signIn: "/login",
+  },
+  cookies: {
+    pkceCodeVerifier: {
+      name: "next-auth.pkce.code_verifier",
+      options: {
+        httpOnly: true,
+        sameSite: "lax",
+        path: "/",
+        secure: process.env.NODE_ENV === "production",
+      },
+    },
   },
 })

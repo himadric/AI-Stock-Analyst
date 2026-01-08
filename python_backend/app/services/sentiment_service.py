@@ -88,6 +88,8 @@ class SentimentService:
             
             for item in news:
                 content = item.get('content', item)
+                if not content:
+                    continue
                 title = content.get('title', 'No Title')
                 if title == 'No Title': continue
 
