@@ -273,6 +273,26 @@ function DashboardContent() {
                         <TooltipTrigger asChild>
                             <Card className="cursor-help hover:bg-accent/5 transition-colors">
                                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                                    <CardTitle className="text-sm font-medium">Revenue / Emp</CardTitle>
+                                </CardHeader>
+                                <CardContent>
+                                     <div className="text-xl font-bold truncate">
+                                        {companyInfo.revenue_per_employee 
+                                            ? "$" + (companyInfo.revenue_per_employee / 1000).toFixed(0) + "k"
+                                            : "N/A"}
+                                     </div>
+                                </CardContent>
+                            </Card>
+                        </TooltipTrigger>
+                        <TooltipContent className="max-w-[300px]">
+                            <p>Revenue generated per full-time employee. Measures workforce efficiency.</p>
+                        </TooltipContent>
+                    </Tooltip>
+
+                    <Tooltip>
+                        <TooltipTrigger asChild>
+                            <Card className="cursor-help hover:bg-accent/5 transition-colors">
+                                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                                     <CardTitle className="text-sm font-medium">ROE</CardTitle>
                                 </CardHeader>
                                 <CardContent>

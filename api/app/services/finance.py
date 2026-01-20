@@ -196,6 +196,8 @@ class FinanceService:
                     for officer in info.get("companyOfficers", [])[:5] # Limit to top 5
                 ]
                 ,
+                "total_revenue": info.get("totalRevenue"),
+                "revenue_per_employee": (info.get("totalRevenue") / info.get("fullTimeEmployees")) if (info.get("totalRevenue") and info.get("fullTimeEmployees")) else None,
                 "year_range": f"{info.get('fiftyTwoWeekLow')} - {info.get('fiftyTwoWeekHigh')}" if info.get('fiftyTwoWeekLow') and info.get('fiftyTwoWeekHigh') else "N/A"
             }
         except Exception as e:
