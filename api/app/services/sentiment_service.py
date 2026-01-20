@@ -1,6 +1,6 @@
 import os
 import yfinance as yf
-from googleapiclient.discovery import build
+import requests
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 from collections import Counter
 import re
@@ -10,17 +10,11 @@ class SentimentService:
     def __init__(self):
         self.analyzer = SentimentIntensityAnalyzer()
         self.youtube_api_key = os.getenv("YOUTUBE_API_KEY")
-        self.youtube = None
-        if self.youtube_api_key:
-            try:
-                self.youtube = build('youtube', 'v3', developerKey=self.youtube_api_key)
-            except Exception as e:
-                print(f"Failed to init YouTube API: {e}")
 
     def get_brand_sentiment(self, ticker: str):
         """
         Orchestrates fetching data and analyzing it.
-        Uses Yahoo Finance News and YouTube (Official API).
+        Uses Yahoo Finance News and YouTube (Official API via requests).
         """
         stock = yf.Ticker(ticker)
         brand_name = self._get_brand_name(ticker, stock)
@@ -133,10 +127,10 @@ class SentimentService:
 
     def _fetch_youtube(self, brand_name: str):
         """
-        Fetches videos AND comments using Official API.
+        Fetches videos AND comments using Official API via requests.
         Search Criteria: Brand Name, Last Month, Most Viewed.
         """
-        if not self.youtube:
+        if not self.youtube_api_key:
             return []
             
         try:
@@ -144,27 +138,31 @@ class SentimentService:
             published_after = (datetime.utcnow() - timedelta(days=30)).isoformat() + "Z"
             
             # 1. Search for videos
-            # Use quotes for exact phrase match as requested
-            search_query = f'"{brand_name} Review"'
+            search_url = "https://www.googleapis.com/youtube/v3/search"
+            params = {
+                "part": "id,snippet",
+                "q": f'"{brand_name} Review"',
+                "maxResults": 5,
+                "type": "video",
+                "order": "viewCount",
+                "publishedAfter": published_after,
+                "relevanceLanguage": "en",
+                "key": self.youtube_api_key
+            }
             
-            search_response = self.youtube.search().list(
-                q=search_query,
-                part="id,snippet",
-                maxResults=5,
-                type="video",
-                order="viewCount",  # Most viewed
-                publishedAfter=published_after, # Last month
-                relevanceLanguage='en' # Restrict to English
-            ).execute()
+            res = requests.get(search_url, params=params)
+            res.raise_for_status()
+            search_data = res.json()
             
             formatted_items = []
             
-            for item in search_response.get("items", []):
+            for item in search_data.get("items", []):
                 video_id = item["id"]["videoId"]
-                title = item["snippet"]["title"]
-                desc = item["snippet"]["description"]
-                channel = item["snippet"]["channelTitle"]
-                published_at = item["snippet"]["publishedAt"]
+                snippet = item["snippet"]
+                title = snippet["title"]
+                desc = snippet["description"]
+                channel = snippet["channelTitle"]
+                published_at = snippet["publishedAt"]
                 
                 # Parse time
                 try:
@@ -176,20 +174,24 @@ class SentimentService:
                 # 2. Fetch top comments for this video
                 comments_text = ""
                 comments_list = []
+                
                 try:
-                    comment_response = self.youtube.commentThreads().list(
-                        part="snippet",
-                        videoId=video_id,
-                        maxResults=5, # Top 5 comments
-                        textFormat="plainText",
-                        order="relevance"
-                    ).execute()
-                    
-                    for c_item in comment_response.get("items", []):
-                        comment = c_item["snippet"]["topLevelComment"]["snippet"]["textDisplay"]
-                        comments_list.append(comment)
-                    
-                    comments_text = " ".join(comments_list)
+                    comments_url = "https://www.googleapis.com/youtube/v3/commentThreads"
+                    c_params = {
+                        "part": "snippet",
+                        "videoId": video_id,
+                        "maxResults": 5,
+                        "textFormat": "plainText",
+                        "order": "relevance",
+                        "key": self.youtube_api_key
+                    }
+                    c_res = requests.get(comments_url, params=c_params)
+                    if c_res.status_code == 200:
+                        c_data = c_res.json()
+                        for c_item in c_data.get("items", []):
+                            comment = c_item["snippet"]["topLevelComment"]["snippet"]["textDisplay"]
+                            comments_list.append(comment)
+                        comments_text = " ".join(comments_list)
                 except Exception:
                     pass
 

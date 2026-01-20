@@ -1,7 +1,7 @@
 import os
 import json
+import requests
 from dotenv import load_dotenv
-from googleapiclient.discovery import build
 
 load_dotenv()
 
@@ -13,18 +13,21 @@ def check_youtube_api():
         return
 
     try:
-        youtube = build('youtube', 'v3', developerKey=api_key)
-        
         # 1. Search for a video
         print("Searching for 'ONON stock'...")
-        search_response = youtube.search().list(
-            q="ONON stock",
-            part="id,snippet",
-            maxResults=1,
-            type="video"
-        ).execute()
+        search_url = "https://www.googleapis.com/youtube/v3/search"
+        params = {
+            "part": "id,snippet",
+            "q": "ONON stock",
+            "maxResults": 1,
+            "type": "video",
+            "key": api_key
+        }
+        res = requests.get(search_url, params=params)
+        res.raise_for_status()
+        search_data = res.json()
         
-        items = search_response.get("items", [])
+        items = search_data.get("items", [])
         if not items:
             print("No videos found.")
             return
@@ -35,17 +38,22 @@ def check_youtube_api():
 
         # 2. Fetch comments for this video
         print(f"Fetching comments for {video_id}...")
-        comment_response = youtube.commentThreads().list(
-            part="snippet",
-            videoId=video_id,
-            maxResults=3,
-            textFormat="plainText"
-        ).execute()
+        comments_url = "https://www.googleapis.com/youtube/v3/commentThreads"
+        c_params = {
+            "part": "snippet",
+            "videoId": video_id,
+            "maxResults": 3,
+            "textFormat": "plainText",
+            "key": api_key
+        }
+        c_res = requests.get(comments_url, params=c_params)
         
         comments = []
-        for item in comment_response.get("items", []):
-            comment = item["snippet"]["topLevelComment"]["snippet"]["textDisplay"]
-            comments.append(comment)
+        if c_res.status_code == 200:
+            c_data = c_res.json()
+            for item in c_data.get("items", []):
+                comment = item["snippet"]["topLevelComment"]["snippet"]["textDisplay"]
+                comments.append(comment)
             
         print(f"Found {len(comments)} comments:")
         print(json.dumps(comments, indent=2))
