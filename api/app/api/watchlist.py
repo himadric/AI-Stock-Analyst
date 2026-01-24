@@ -9,7 +9,7 @@ router = APIRouter()
 class WatchlistItem(BaseModel):
     ticker: str
 
-@router.get("/")
+@router.get("")
 async def get_watchlist():
     database = db.get_db()
     cursor = database.watchlist.find({})
@@ -57,7 +57,7 @@ async def get_watchlist():
             
     return data
 
-@router.post("/")
+@router.post("")
 async def add_to_watchlist(item: WatchlistItem):
     database = db.get_db()
     ticker = item.ticker.upper().strip()

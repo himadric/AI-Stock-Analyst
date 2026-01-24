@@ -271,13 +271,13 @@ export async function runSimulation(ticker: string, wacc: number, growth_rate_me
 
 // Watchlist
 export async function getWatchlist() {
-    const res = await fetch(`${API_BASE_URL}/watchlist/`);
+    const res = await fetch(`${API_BASE_URL}/watchlist`);
     if (!res.ok) throw new Error("Failed to fetch watchlist");
     return res.json();
 }
 
 export async function addToWatchlist(ticker: string) {
-    const res = await fetch(`${API_BASE_URL}/watchlist/`, {
+    const res = await fetch(`${API_BASE_URL}/watchlist`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ticker }),
