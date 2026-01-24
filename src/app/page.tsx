@@ -6,8 +6,8 @@ import DashboardLayout from "@/components/layout/dashboard-layout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { ArrowUpRight, FileText, Loader2, Sparkles, AlertTriangle } from "lucide-react";
-import { fetchCompanyInfo, fetchSECFilings, analyzeFiling, fetchCompanyNews, analyzeNews, fetchFinancials, analyzeValuation, analyzeRisk, fetchPeerComparison, fetchHistoricalMetrics, fetchFutureLeaderScore } from "@/lib/api";
+import { ArrowUpRight, FileText, Loader2, Sparkles, AlertTriangle, Plus, Check } from "lucide-react";
+import { fetchCompanyInfo, fetchSECFilings, analyzeFiling, fetchCompanyNews, analyzeNews, fetchFinancials, analyzeValuation, analyzeRisk, fetchPeerComparison, fetchHistoricalMetrics, fetchFutureLeaderScore, addToWatchlist } from "@/lib/api";
 import { FinancialCharts } from "@/components/dashboard/financial-charts";
 import { PeerComparison } from "@/components/dashboard/peer-comparison";
 import { FutureLeaderScore } from "@/components/dashboard/future-leader-score";
@@ -43,9 +43,12 @@ function DashboardContent() {
     
     const [analyzing, setAnalyzing] = useState<string | null>(null); 
     const [analysisResult, setAnalysisResult] = useState<string | null>(null);
+    const [addingWatchlist, setAddingWatchlist] = useState(false);
+    const [added, setAdded] = useState(false);
 
     useEffect(() => {
         setAnalysisResult(null); 
+        setAdded(false);
         loadData();
     }, [ticker]);
 
@@ -132,6 +135,19 @@ function DashboardContent() {
         }
     }
 
+    async function handleAddToWatchlist() {
+        setAddingWatchlist(true);
+        try {
+            await addToWatchlist(ticker);
+            setAdded(true);
+            setTimeout(() => setAdded(false), 3000);
+        } catch (e) {
+            console.error("Failed to add to watchlist", e);
+        } finally {
+            setAddingWatchlist(false);
+        }
+    }
+
    return (
         <div className="space-y-6">
             <div className="flex items-center justify-between">
@@ -139,6 +155,16 @@ function DashboardContent() {
                     <h2 className="text-3xl font-bold tracking-tight">{ticker} Analysis</h2>
                     <p className="text-muted-foreground">Real-time market insights and AI predictions</p>
                 </div>
+                <Button onClick={handleAddToWatchlist} disabled={addingWatchlist || added} variant={added ? "secondary" : "default"}>
+                    {addingWatchlist ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : added ? (
+                        <Check className="mr-2 h-4 w-4" />
+                    ) : (
+                        <Plus className="mr-2 h-4 w-4" />
+                    )}
+                    {added ? "Added" : "Add to Watchlist"}
+                </Button>
             </div>
 
             {loading || !companyInfo ? (

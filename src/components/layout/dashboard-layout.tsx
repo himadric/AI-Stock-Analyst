@@ -1,6 +1,6 @@
 "use client";
 
-import { BarChart3, FileText, Globe, Home, LayoutDashboard, Search, TrendingUp, Target, Users, Menu, Trophy, Shield, Landmark } from "lucide-react";
+import { BarChart3, FileText, Globe, Home, LayoutDashboard, Search, TrendingUp, Target, Users, Menu, Trophy, Shield, Landmark, Building2 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -21,11 +21,13 @@ export default function DashboardLayout({
     { name: "Overview", href: "/", icon: LayoutDashboard },
     { name: "Financials", href: "/financials", icon: BarChart3 },
     { name: "Chart", href: "/chart", icon: TrendingUp },
+    { name: "Simulation", href: "/simulation", icon: TrendingUp },
     { name: "Forecast", href: "/forecast", icon: Target },
     { name: "Ownership", href: "/ownership", icon: Users },
     { name: "Brand Sentiment", href: "/sentiment", icon: Users },
+    { name: "Watchlist", href: "/watchlist", icon: FileText },
     { name: "Finder", href: "/finder", icon: Search },
-    { name: "Vanguard Tracker", href: "/vanguard", icon: BarChart3 },
+    { name: "Institutional Trackers", href: "/institutional", icon: Building2 },
     { name: "US House Tracker", href: "/house", icon: Landmark },
     { name: "US Senate Tracker", href: "/senate", icon: Landmark },
     { name: "Rankings", href: "/rankings", icon: Trophy },
@@ -47,7 +49,7 @@ export default function DashboardLayout({
           const isActive = pathname === item.href;
           return (
             <div key={item.href}>
-                {item.name === "Finder" && <div className="my-2 mx-3 border-t border-border" />}
+                {item.name === "Watchlist" && <div className="my-2 mx-3 border-t border-border" />}
                 <Link 
                 href={`${item.href}?ticker=${ticker}`} 
                 className={cn(
@@ -64,14 +66,6 @@ export default function DashboardLayout({
           );
         })}
       </nav>
-
-      <div className="mt-auto">
-        <div className="bg-muted/50 p-4 rounded-lg">
-          <h3 className="font-semibold text-sm mb-1">Pro Plan</h3>
-          <p className="text-xs text-muted-foreground mb-3">Get advanced AI predictions.</p>
-          <Button size="sm" className="w-full">Upgrade</Button>
-        </div>
-      </div>
     </div>
   );
 

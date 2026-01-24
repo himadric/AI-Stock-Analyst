@@ -11,6 +11,7 @@ class InstitutionService:
         self.sec_service = SECService()
         self.headers = self.sec_service.headers
         self.vanguard_cik = "0000102909"
+        self.munro_cik = "0001768744"
         
         # Build Title -> Ticker map for resolution
         self.title_to_ticker = {}
@@ -31,16 +32,25 @@ class InstitutionService:
         """
         Orchestrator: Tries DB first, falls back to live SEC fetch.
         """
+        return self._get_institution_trades(self.vanguard_cik, "vanguard_tracker", limit)
+
+    def get_munro_trades(self, limit=10):
+        """
+        Orchestrator: Tries DB first, falls back to live SEC fetch.
+        """
+        return self._get_institution_trades(self.munro_cik, "munro_tracker", limit)
+
+    def _get_institution_trades(self, cik, collection_name, limit):
         # 1. Try DB
-        db_data = self._get_from_db(limit)
+        db_data = self._get_from_db(collection_name, limit)
         if db_data:
             return db_data
             
-        print("Falling back to live SEC data...")
+        print(f"Falling back to live SEC data for CIK {cik}...")
         # 2. Fallback to Live
-        return self._fetch_live_vanguard_trades(limit)
+        return self._fetch_live_trades(cik, limit)
 
-    def _get_from_db(self, limit):
+    def _get_from_db(self, collection_name, limit):
         try:
             import os
             from pymongo import MongoClient
@@ -52,7 +62,7 @@ class InstitutionService:
             print("DEBUG: Attempting to connect to MongoDB...")
             client = MongoClient(uri, serverSelectionTimeoutMS=2000)
             db = client["ai_stock_analyst"]
-            col = db["vanguard_tracker"]
+            col = db[collection_name]
             
             # Fetch Docs
             buy_count = col.count_documents({"type": "buy"})
@@ -77,19 +87,19 @@ class InstitutionService:
             print(f"DB Read Error: {e}")
             return None
 
-    def _fetch_live_vanguard_trades(self, limit=10):
+    def _fetch_live_trades(self, cik, limit=10):
         """
         Fetches last 2 13F filings, compares them, determines top buys/sells.
         (Original Logic)
         """
         try:
-            filings = self._get_last_two_13f(self.vanguard_cik)
+            filings = self._get_last_two_13f(cik)
             if len(filings) < 2:
                 return {"error": "Insufficient data"}
             
             # Parse Current and Previous
-            df_curr = self._fetch_and_parse_13f(filings[0])
-            df_prev = self._fetch_and_parse_13f(filings[1])
+            df_curr = self._fetch_and_parse_13f(filings[0], cik)
+            df_prev = self._fetch_and_parse_13f(filings[1], cik)
             
             if df_curr.empty or df_prev.empty:
                 return {"error": "Failed to parse info tables"}
@@ -195,9 +205,13 @@ class InstitutionService:
             print(f"Error fetching submission history: {e}")
             return []
 
-    def _fetch_and_parse_13f(self, filing_meta):
+    def _fetch_and_parse_13f(self, filing_meta, cik_str=None):
         # 1. Find info table XML URL via index scraping
-        cik = self.vanguard_cik.lstrip('0')
+        if cik_str:
+            cik = str(cik_str).lstrip('0')
+        else:
+            cik = self.vanguard_cik.lstrip('0') # Fallback
+            
         acc_no_dash = filing_meta['acc'].replace("-", "")
         index_url = f"https://www.sec.gov/Archives/edgar/data/{cik}/{acc_no_dash}/{filing_meta['acc']}-index.html"
         
@@ -207,15 +221,29 @@ class InstitutionService:
             
             soup = BeautifulSoup(idx_resp.content, 'html.parser')
             xml_url = None
+            candidates = []
+            
             for row in soup.find_all("tr"):
                 cells = row.find_all("td")
                 if len(cells) > 3:
                      doc_type = cells[1].text.strip()
                      doc_name = cells[2].text.strip()
-                     if "INFORMATION TABLE" in doc_type.upper() and doc_name.endswith(".xml"):
-                         xml_href = cells[2].find("a")["href"]
-                         xml_url = f"https://www.sec.gov{xml_href}"
-                         break
+                     
+                     if doc_name.endswith(".xml"):
+                         href = cells[2].find("a")["href"]
+                         full_url = f"https://www.sec.gov{href}"
+                         
+                         # Priority 1: Explicit Label
+                         if "INFORMATION TABLE" in doc_type.upper():
+                             xml_url = full_url
+                             break
+                         
+                         # Priority 2: Not primary_doc.xml (likely the info table)
+                         if "primary_doc.xml" not in doc_name:
+                             candidates.append(full_url)
+
+            if not xml_url and candidates:
+                xml_url = candidates[0]
             
             if not xml_url: return pd.DataFrame()
             
