@@ -215,6 +215,15 @@ export async function fetchVanguardTrades(limit: number = 100) {
     return res.json();
 }
 
+// Munro Partners Tracker
+export async function fetchMunroTrades(limit: number = 100) {
+    const res = await fetch(`${API_BASE_URL}/munro/trades?limit=${limit}`);
+    if (!res.ok) {
+        throw new Error("Failed to fetch munro trades");
+    }
+    return res.json();
+}
+
 // Congress Tracker
 export async function fetchCongressTrades(limit: number = 100) {
     const res = await fetch(`${API_BASE_URL}/congress/trades?limit=${limit}`);
@@ -241,3 +250,47 @@ export async function fetchSenateTrades() {
     }
     return res.json();
 }
+
+// Simulation
+// Simulation
+export async function runSimulation(ticker: string, wacc: number, growth_rate_mean: number | null, simulations: number = 10000, bear_case: boolean = false) {
+    const res = await fetch(`${API_BASE_URL}/simulation/run`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+            ticker, 
+            wacc, 
+            growth_rate_mean, 
+            simulations,
+            bear_case
+        }),
+    });
+    if (!res.ok) throw new Error("Simulation failed");
+    return res.json();
+}
+
+// Watchlist
+export async function getWatchlist() {
+    const res = await fetch(`${API_BASE_URL}/watchlist/`);
+    if (!res.ok) throw new Error("Failed to fetch watchlist");
+    return res.json();
+}
+
+export async function addToWatchlist(ticker: string) {
+    const res = await fetch(`${API_BASE_URL}/watchlist/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ticker }),
+    });
+    if (!res.ok) throw new Error("Failed to add to watchlist");
+    return res.json();
+}
+
+export async function removeFromWatchlist(ticker: string) {
+    const res = await fetch(`${API_BASE_URL}/watchlist/${ticker}`, {
+        method: "DELETE",
+    });
+    if (!res.ok) throw new Error("Failed to remove from watchlist");
+    return res.json();
+}
+
