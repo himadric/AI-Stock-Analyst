@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, Suspense } from "react"
 import { getWatchlist, removeFromWatchlist } from "@/lib/api"
 import { WatchlistTable } from "@/components/watchlist/watchlist-table"
 import DashboardLayout from "@/components/layout/dashboard-layout"
@@ -13,7 +13,7 @@ interface WatchlistItem {
     change_percent: number;
 }
 
-export default function WatchlistPage() {
+function WatchlistContent() {
     const [data, setData] = useState<WatchlistItem[]>([])
     const [loading, setLoading] = useState(true)
 
@@ -66,5 +66,13 @@ export default function WatchlistPage() {
                 )}
             </div>
         </DashboardLayout>
+    )
+}
+
+export default function WatchlistPage() {
+    return (
+        <Suspense fallback={<div className="flex items-center justify-center h-screen"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div></div>}>
+            <WatchlistContent />
+        </Suspense>
     )
 }
