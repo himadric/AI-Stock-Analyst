@@ -27,6 +27,7 @@ export default function DashboardLayout({
     { name: "Brand Sentiment", href: "/sentiment", icon: Users },
     { name: "Watchlist", href: "/watchlist", icon: FileText },
     { name: "Finder", href: "/finder", icon: Search },
+    { name: "Market Heatmap", href: "/heatmap", icon: LayoutDashboard }, // Using LayoutDashboard or similar
     { name: "Institutional Trackers", href: "/institutional", icon: Building2 },
     { name: "US House Tracker", href: "/house", icon: Landmark },
     { name: "US Senate Tracker", href: "/senate", icon: Landmark },
