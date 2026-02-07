@@ -36,6 +36,8 @@ export function TickerSearch() {
     return () => clearTimeout(delayDebounceFn);
   }, [query]);
 
+  // const pathname = usePathname(); // Removed
+
   const handleSelect = (ticker: string) => {
     router.push(`/?ticker=${ticker}`);
     setOpen(false);
