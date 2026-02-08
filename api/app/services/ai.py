@@ -378,4 +378,97 @@ Synthesize the provided Economic Indicators and Sector Performance data into a c
 * **Outlook:** [Forward-looking takeaway]
 </output_format>
 """
+    def analyze_etf_quality(self, ticker: str, data: dict):
+        """
+        Generates a 'Quality Core' ETF analysis based on specific user requirements.
+        """
+        # Unwrap data for prompt
+        expense_ratio = data.get('expense_ratio', 'N/A')
+        spread = data.get('bid_ask_spread', 'N/A')
+        
+        top_holdings = ""
+        if data.get('holdings'):
+            for h in data.get('holdings')[:10]:
+                top_holdings += f"- {h['name']} ({h['symbol']}): {h['percent']}%\n"
+        
+        sector_breakdown = ""
+        if data.get('sectors'):
+            for s in data.get('sectors'):
+                sector_breakdown += f"- {s['sector']}: {s['weight']*100:.2f}%\n"
+
+        beta = data.get('beta', 'N/A')
+        std_dev = data.get('std_dev', 'N/A')
+        sharpe = data.get('sharpe', 'N/A')
+        
+        return_5y = data.get('return_5y', 'N/A')
+        return_10y = data.get('return_10y', 'N/A')
+        benchmark_return_5y = data.get('benchmark_return_5y', 'N/A')
+        tracking_error = data.get('tracking_error', 'N/A')
+        
+        pe_ratio = data.get('pe_ratio', 'N/A')
+
+        prompt = f"""
+<role>
+Senior Investment Strategist.
+</role>
+
+<objective>
+Conduct a "Quality Core" analysis of {ticker} for a 10-year investment horizon.
+</objective>
+
+<data_context>
+**Structural Efficiency:**
+- Expense Ratio: {expense_ratio}
+- 30-day Median Bid-Ask Spread (Proxy): {spread}
+
+**Portfolio Composition:**
+Top 10 Holdings:
+{top_holdings}
+
+Sub-Sector/Sector Breakdown:
+{sector_breakdown}
+
+**Risk Metrics:**
+- Beta (vs S&P 500): {beta}
+- Standard Deviation: {std_dev}
+- Sharpe Ratio: {sharpe}
+
+**Long-Term Performance:**
+- 5-Year Annualized Return: {return_5y}
+- 10-Year Annualized Return: {return_10y}
+- Benchmark 5Y Return (Ref): {benchmark_return_5y}
+- Tracking Error (Est): {tracking_error}
+
+**Valuation:**
+- P/E Ratio: {pe_ratio}
+</data_context>
+
+<required_analysis_sections>
+
+**1. Structural Efficiency**
+- Compare Expense Ratio to category norms.
+- Evaluate Bid-Ask Spread for liquidity.
+
+**2. Portfolio Composition (The Engine)**
+- Analyze Top 10 Holdings concentration.
+- Analyze sub-sector breakdown. Does this align with high-growth themes (e.g., AI, aging population)?
+
+**3. Risk Metrics**
+- Interpret Beta and Standard Deviation. 
+- Does the Sharpe Ratio justify the risk?
+
+**4. Long-Term Performance**
+- Compare returns against valid benchmarks.
+- Discuss Tracking Error if relevant.
+
+</required_analysis_sections>
+
+<deliverable>
+**1. Summary Table**
+Create a markdown table summarizing key metrics (Expense Ratio, Beta, Sharpe, 5Y Return, Verdict).
+
+**2. Buy/Wait Verdict**
+Provide a clear "BUY" or "WAIT" verdict based on current Sector Valuation (P/E Ratio) relative to historical norms and the quality analysis.
+</deliverable>
+"""
         return self.generate_insight(prompt)

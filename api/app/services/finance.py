@@ -153,6 +153,48 @@ class FinanceService:
             
         return None
 
+    def _get_etf_holdings(self, stock):
+        """
+        Helper to extract top holdings from funds_data.
+        """
+        try:
+            if hasattr(stock, 'funds_data'):
+                fd = stock.funds_data
+                if fd and fd.top_holdings is not None:
+                    # Convert to list of dicts
+                    holdings = []
+                    # top_holdings is a DataFrame usually
+                    df = fd.top_holdings
+                    if not df.empty:
+                        # Reset index if Symbol is the index
+                        if df.index.name == 'Symbol':
+                            df = df.reset_index()
+                            
+                        for _, row in df.iterrows():
+                            holdings.append({
+                                "symbol": row.get('Symbol'),
+                                "name": row.get('Name'),
+                                "percent": row.get('Holding Percent', 0)
+                            })
+                    return holdings
+        except Exception as e:
+            print(f"Error fetching holdings: {e}")
+        return []
+
+    def _get_etf_sector_weightings(self, stock):
+        """
+        Helper to extract sector weightings from funds_data.
+        """
+        try:
+            if hasattr(stock, 'funds_data'):
+                fd = stock.funds_data
+                if fd and fd.sector_weightings:
+                    # It's a dict: {'technology': 0.35, ...}
+                    return [{"sector": k, "weight": v} for k, v in fd.sector_weightings.items()]
+        except Exception as e:
+            print(f"Error fetching sectors: {e}")
+        return []
+
     def get_company_info(self, ticker: str):
         """
         Fetches basic company information for a given ticker.
@@ -169,8 +211,8 @@ class FinanceService:
                 "website": info.get("website"),
                 "employees": info.get("fullTimeEmployees"),
                 "summary": info.get("longBusinessSummary"),
-                "current_price": info.get("currentPrice") or info.get("regularMarketPrice"),
-                "market_cap": info.get("marketCap"),
+                "current_price": info.get("currentPrice") or info.get("regularMarketPrice") or info.get("navPrice"),
+                "market_cap": info.get("marketCap") or info.get("totalAssets"),
                 "pe_ratio": info.get("trailingPE"),
                 "forward_pe": info.get("forwardPE"),
                 "peg_ratio": self._get_peg_ratio(info),
@@ -180,9 +222,8 @@ class FinanceService:
                 "free_cash_flow": info.get("freeCashflow"),
                 "debt_to_equity": info.get("debtToEquity"),
                 "current_ratio": info.get("currentRatio"),
-                "current_ratio": info.get("currentRatio"),
-                "dividend_yield": info.get("dividendYield"),
-                "beta": info.get("beta"),
+                "dividend_yield": info.get("dividendYield") or info.get("yield"),
+                "beta": info.get("beta") or info.get("beta3Year"),
                 "fifty_two_week_low": info.get("fiftyTwoWeekLow"),
                 "fifty_two_week_high": info.get("fiftyTwoWeekHigh"),
                 "revenue_growth": info.get("revenueGrowth"),
@@ -194,11 +235,22 @@ class FinanceService:
                         "bio": officer.get("title") # Fallback as bio is rarely separate
                     }
                     for officer in info.get("companyOfficers", [])[:5] # Limit to top 5
-                ]
-                ,
+                ],
                 "total_revenue": info.get("totalRevenue"),
                 "revenue_per_employee": (info.get("totalRevenue") / info.get("fullTimeEmployees")) if (info.get("totalRevenue") and info.get("fullTimeEmployees")) else None,
-                "year_range": f"{info.get('fiftyTwoWeekLow')} - {info.get('fiftyTwoWeekHigh')}" if info.get('fiftyTwoWeekLow') and info.get('fiftyTwoWeekHigh') else "N/A"
+                "year_range": f"{info.get('fiftyTwoWeekLow')} - {info.get('fiftyTwoWeekHigh')}" if info.get('fiftyTwoWeekLow') and info.get('fiftyTwoWeekHigh') else "N/A",
+                
+                # ETF Specifics
+                "is_etf": info.get("quoteType") == "ETF",
+                "net_assets": info.get("totalAssets"),
+                "yield": info.get("yield"),
+                "nav_price": info.get("navPrice"),
+                "category": info.get("category"),
+                "fund_family": info.get("fundFamily"),
+                "net_expense_ratio": info.get("annualReportExpenseRatio") or info.get("netExpenseRatio"),
+                "ytd_return": info.get("ytdReturn"),
+                "holdings": self._get_etf_holdings(stock),
+                "sector_weightings": self._get_etf_sector_weightings(stock)
             }
         except Exception as e:
             print(f"Error fetching company info for {ticker}: {e}")
@@ -711,7 +763,80 @@ class FinanceService:
             print(f"Error fetching forecast for {ticker}: {e}")
             return None
 
-    def get_analyst_actions(self, ticker: str):
+    def get_etf_details(self, ticker: str):
+        """
+        Fetches detailed ETF data for AI analysis, including calculated metrics.
+        """
+        try:
+            stock = yf.Ticker(ticker)
+            info = stock.info
+            
+            # 1. Structural
+            expense_ratio = info.get("annualReportExpenseRatio") or info.get("netExpenseRatio")
+            # Spread proxy: (Ask - Bid) / Price
+            bid = info.get("bid")
+            ask = info.get("ask")
+            price = info.get("regularMarketPrice") or info.get("currentPrice")
+            spread_pct = 0
+            if bid and ask and price:
+               spread_pct = (ask - bid) / price
+            
+            # 2. Composition (Holdings & Sectors)
+            holdings = self._get_etf_holdings(stock)
+            sectors = self._get_etf_sector_weightings(stock)
+            
+            # 3. Risk & Performance
+            # Fetch 10y history for calculations
+            hist = stock.history(period="10y")
+            
+            return_5y = info.get("fiveYearAverageReturn")
+            return_10y = None # Calculate below
+            std_dev = None
+            sharpe = None
+            
+            if not hist.empty:
+                # Calculate daily returns
+                hist['Daily_Return'] = hist['Close'].pct_change()
+                
+                # Annualized Volatility (Std Dev)
+                std_dev = hist['Daily_Return'].std() * np.sqrt(252)
+                
+                # Sharpe Ratio (assuming 2% risk-free rate for simplicity)
+                rf_rate = 0.02
+                mean_return = hist['Daily_Return'].mean() * 252
+                if std_dev and std_dev > 0:
+                    sharpe = (mean_return - rf_rate) / std_dev
+                
+                # 10Y CAGR
+                # (End / Start)^(1/n) - 1
+                try:
+                    start_price = hist['Close'].iloc[0]
+                    end_price = hist['Close'].iloc[-1]
+                    years = (hist.index[-1] - hist.index[0]).days / 365.25
+                    if years > 9: # Ensure we have enough data
+                        return_10y = (end_price / start_price) ** (1/years) - 1
+                except:
+                    pass
+
+            return {
+                "ticker": ticker,
+                "expense_ratio": f"{expense_ratio*100:.2f}%" if expense_ratio else "N/A",
+                "bid_ask_spread": f"{spread_pct*100:.2f}%" if spread_pct else "N/A",
+                "holdings": holdings,
+                "sectors": sectors,
+                "beta": info.get("beta3Year") or info.get("beta"),
+                "std_dev": f"{std_dev*100:.2f}%" if std_dev else "N/A",
+                "sharpe": f"{sharpe:.2f}" if sharpe else "N/A",
+                "return_5y": f"{return_5y*100:.2f}%" if return_5y else "N/A",
+                "return_10y": f"{return_10y*100:.2f}%" if return_10y else "N/A",
+                "benchmark_return_5y": "N/A", # Placeholder, could fetch SPY
+                "tracking_error": "N/A", # Requires benchmark history comparison
+                "pe_ratio": info.get("trailingPE")
+            }
+            
+        except Exception as e:
+            print(f"Error fetching ETF details for {ticker}: {e}")
+            return {}
         """
         Fetches detailed positive/negative analyst actions (upgrades/downgrades).
         """

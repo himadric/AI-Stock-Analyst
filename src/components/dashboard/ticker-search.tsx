@@ -7,7 +7,13 @@ import { Input } from "@/components/ui/input";
 import { searchTickers } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
-export function TickerSearch() {
+interface TickerSearchProps {
+  redirectBase?: string;
+  placeholder?: string;
+  className?: string;
+}
+
+export function TickerSearch({ redirectBase = "/", placeholder = "Search ticker (e.g. AAPL)...", className }: TickerSearchProps) {
   const router = useRouter();
   const [open, setOpen] = React.useState(false);
   const [query, setQuery] = React.useState("");
@@ -36,19 +42,19 @@ export function TickerSearch() {
     return () => clearTimeout(delayDebounceFn);
   }, [query]);
 
-  // const pathname = usePathname(); // Removed
-
   const handleSelect = (ticker: string) => {
-    router.push(`/?ticker=${ticker}`);
+    // Check if redirectBase already includes query params or not
+    const separator = redirectBase.includes("?") ? "&" : "?";
+    router.push(`${redirectBase}${separator}ticker=${ticker}`);
     setOpen(false);
     setQuery("");
   }
 
   return (
-    <div className="relative w-96 z-50">
+    <div className={cn("relative w-96 z-50", className)}>
       <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
       <Input 
-        placeholder="Search ticker (e.g. AAPL)..." 
+        placeholder={placeholder}
         className="pl-9" 
         value={query}
         onChange={(e) => setQuery(e.target.value)}

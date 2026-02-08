@@ -113,3 +113,17 @@ class MacroAnalysisRequest(BaseModel):
 async def analyze_macro_market(request: MacroAnalysisRequest):
     analysis = ai_service.analyze_macro_market(request.macro_data, request.sector_data)
     return {"analysis": analysis}
+
+class EtfAnalysisRequest(BaseModel):
+    ticker: str
+
+@router.post("/analyze_etf")
+async def analyze_etf(request: EtfAnalysisRequest):
+    # 1. Fetch ETF Details
+    data = finance_service.get_etf_details(request.ticker)
+    if not data:
+        raise HTTPException(status_code=404, detail="ETF data not found")
+    
+    # 2. Analyze
+    analysis = ai_service.analyze_etf_quality(request.ticker, data)
+    return {"analysis": analysis}
