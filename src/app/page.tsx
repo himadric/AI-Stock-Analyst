@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, Suspense } from "react";
+import { useEffect, useState, Suspense, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
 import DashboardLayout from "@/components/layout/dashboard-layout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -148,7 +148,23 @@ function DashboardContent() {
         }
     }
 
-   return (
+    const industryPe = useMemo(() => {
+        if (!peers || peers.length === 0) return null;
+        const validPeers = peers
+            .filter((p: any) => p.pe_ratio && p.pe_ratio > 0)
+            .sort((a: any, b: any) => a.pe_ratio - b.pe_ratio);
+        
+        if (validPeers.length === 0) return null;
+        
+        const mid = Math.floor(validPeers.length / 2);
+        if (validPeers.length % 2 === 0) {
+            return (validPeers[mid - 1].pe_ratio + validPeers[mid].pe_ratio) / 2;
+        } else {
+            return validPeers[mid].pe_ratio;
+        }
+    }, [peers]);
+
+    return (
         <div className="space-y-6">
             <div className="flex items-center justify-between">
                 <div>
@@ -212,6 +228,9 @@ function DashboardContent() {
                                 </CardHeader>
                                 <CardContent>
                                     <div className="text-2xl font-bold">{companyInfo.pe_ratio?.toFixed(2) || "N/A"}</div>
+                                    <p className="text-xs text-muted-foreground mt-1">
+                                        Industry: {industryPe ? industryPe.toFixed(2) : "N/E"}
+                                    </p>
                                 </CardContent>
                             </Card>
                         </TooltipTrigger>
@@ -235,15 +254,6 @@ function DashboardContent() {
                             <p>{METRIC_TOOLTIPS["Forward P/E"]}</p>
                         </TooltipContent>
                     </Tooltip>
-
-                    <Card>
-                        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                            <CardTitle className="text-sm font-medium">Industry P/E</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="text-2xl font-bold text-muted-foreground">N/E</div>
-                        </CardContent>
-                    </Card>
 
                     <Tooltip>
                         <TooltipTrigger asChild>

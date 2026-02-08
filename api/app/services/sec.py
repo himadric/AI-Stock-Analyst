@@ -26,8 +26,117 @@ class SECService:
                         "ticker": item['ticker'],
                         "title": item['title']
                     })
+            
+            # Augment with popular ETFs (Vanguard & others) that might be missing or hard to find
+            self._load_additional_etfs()
+            
         except Exception as e:
             print(f"Error loading ticker map: {e}")
+            # Ensure we at least have the manual list if API fails
+            self._load_additional_etfs()
+
+    def _load_additional_etfs(self):
+        # Common Popular ETFs (Vanguard, SPDR, Invesco)
+        etfs = [
+            # Vanguard ETFs
+            {"ticker": "VOO", "title": "Vanguard S&P 500 ETF"},
+            {"ticker": "VTI", "title": "Vanguard Total Stock Market ETF"},
+            {"ticker": "VEA", "title": "Vanguard FTSE Developed Markets ETF"},
+            {"ticker": "VUG", "title": "Vanguard Growth ETF"},
+            {"ticker": "VTV", "title": "Vanguard Value ETF"},
+            {"ticker": "BND", "title": "Vanguard Total Bond Market ETF"},
+            {"ticker": "VXUS", "title": "Vanguard Total International Stock ETF"},
+            {"ticker": "VWO", "title": "Vanguard FTSE Emerging Markets ETF"},
+            {"ticker": "VGT", "title": "Vanguard Information Technology ETF"},
+            {"ticker": "VIG", "title": "Vanguard Dividend Appreciation ETF"},
+            {"ticker": "VO", "title": "Vanguard Mid-Cap ETF"},
+            {"ticker": "BNDX", "title": "Vanguard Total International Bond ETF"},
+            {"ticker": "VYM", "title": "Vanguard High Dividend Yield ETF"},
+            {"ticker": "VB", "title": "Vanguard Small-Cap ETF"},
+            {"ticker": "VT", "title": "Vanguard Total World Stock ETF"},
+            {"ticker": "VCIT", "title": "Vanguard Intermediate-Term Corporate Bond ETF"},
+            {"ticker": "VEU", "title": "Vanguard FTSE All-World ex-US Index Fund"},
+            {"ticker": "VV", "title": "Vanguard Large-Cap ETF"},
+            {"ticker": "BSV", "title": "Vanguard Short-Term Bond ETF"},
+            {"ticker": "VTEB", "title": "Vanguard Tax-Exempt Bond ETF"},
+            {"ticker": "VCSH", "title": "Vanguard Short-Term Corporate Bond ETF"},
+            {"ticker": "VGIT", "title": "Vanguard Intermediate-Term Treasury ETF"},
+            {"ticker": "VONG", "title": "Vanguard Russell 1000 Growth ETF"},
+            {"ticker": "VNQ", "title": "Vanguard Real Estate ETF"},
+            {"ticker": "VBR", "title": "Vanguard Small Cap Value ETF"},
+            {"ticker": "VGK", "title": "Vanguard FTSE Europe ETF"},
+            {"ticker": "MGK", "title": "Vanguard Mega Cap Growth ETF"},
+            {"ticker": "BIV", "title": "Vanguard Intermediate-Term Bond ETF"},
+            {"ticker": "VGSH", "title": "Vanguard Short-Term Treasury ETF"},
+            {"ticker": "VXF", "title": "Vanguard Extended Market ETF"},
+            {"ticker": "VOOG", "title": "Vanguard S&P 500 Growth ETF"},
+            {"ticker": "VOE", "title": "Vanguard Mid-Cap Value ETF"},
+            {"ticker": "VBK", "title": "Vanguard Small-Cap Growth ETF"},
+            {"ticker": "VOT", "title": "Vanguard Mid-Cap Growth ETF"},
+            {"ticker": "VHT", "title": "Vanguard Health Care ETF"},
+            {"ticker": "VYMI", "title": "Vanguard International High Dividend Yield ETF"},
+            {"ticker": "VTIP", "title": "Vanguard Short-Term Inflation-Protected Securities ETF"},
+            {"ticker": "VONV", "title": "Vanguard Russell 1000 Value ETF"},
+            {"ticker": "VMBS", "title": "Vanguard Mortgage-Backed Securities ETF"},
+            {"ticker": "VTWO", "title": "Vanguard Russell 2000 ETF"},
+            {"ticker": "VFH", "title": "Vanguard Financials ETF"},
+            {"ticker": "ESGV", "title": "Vanguard ESG U.S. Stock ETF"},
+            {"ticker": "MGV", "title": "Vanguard Mega Cap Value ETF"},
+            {"ticker": "VSS", "title": "Vanguard FTSE All-World ex-US Small-Cap ETF"},
+            {"ticker": "VGLT", "title": "Vanguard Long-Term Treasury ETF"},
+            {"ticker": "MGC", "title": "Vanguard Mega Cap ETF"},
+            {"ticker": "VIGI", "title": "Vanguard International Dividend Appreciation ETF"},
+            {"ticker": "VPL", "title": "Vanguard FTSE Pacific ETF"},
+            {"ticker": "VDE", "title": "Vanguard Energy ETF"},
+            {"ticker": "VDC", "title": "Vanguard Consumer Staples ETF"},
+            {"ticker": "VPU", "title": "Vanguard Utilities ETF"},
+            {"ticker": "VCLT", "title": "Vanguard Long-Term Corporate Bond ETF"},
+            {"ticker": "VUSB", "title": "Vanguard Ultra-Short Bond ETF"},
+            {"ticker": "VONE", "title": "Vanguard Russell 1000 ETF"},
+            {"ticker": "VIS", "title": "Vanguard Industrials ETF"},
+            {"ticker": "VCR", "title": "Vanguard Consumer Discretionary ETF"},
+            {"ticker": "VOOV", "title": "Vanguard S&P 500 Value ETF"},
+            {"ticker": "VOX", "title": "Vanguard Communication Services ETF"},
+            {"ticker": "VSGX", "title": "Vanguard ESG International Stock ETF"},
+            {"ticker": "VWOB", "title": "Vanguard Emerging Markets Government Bond ETF"},
+            {"ticker": "VCRB", "title": "Vanguard Core Bond ETF"},
+            {"ticker": "BLV", "title": "Vanguard Long-Term Bond ETF"},
+            {"ticker": "VBIL", "title": "Vanguard 0-3 Month Treasury Bill ETF"},
+            {"ticker": "VTHR", "title": "Vanguard Russell 3000 ETF"},
+            {"ticker": "EDV", "title": "Vanguard Extended Duration Treasury ETF"},
+            {"ticker": "VNQI", "title": "Vanguard Global ex-U.S. Real Estate ETF"},
+            {"ticker": "VIOO", "title": "Vanguard S&P Small-Cap 600 ETF"},
+            {"ticker": "IVOO", "title": "Vanguard S&P Mid-Cap 400 ETF"},
+            {"ticker": "VAW", "title": "Vanguard Materials ETF"},
+            {"ticker": "VTEC", "title": "Vanguard California Tax-Exempt Bond ETF"},
+            {"ticker": "VTES", "title": "Vanguard Short-Term Tax Exempt Bond ETF"},
+            {"ticker": "VIOV", "title": "Vanguard S&P Small-Cap 600 Value ETF"},
+            {"ticker": "VTC", "title": "Vanguard Total Corporate Bond ETF"},
+            {"ticker": "BNDW", "title": "Vanguard Total World Bond ETF"},
+            {"ticker": "IVOG", "title": "Vanguard S&P Mid-Cap 400 Growth ETF"},
+            {"ticker": "VFMO", "title": "Vanguard U.S. Momentum Factor ETF"},
+            {"ticker": "VTWG", "title": "Vanguard Russell 2000 Growth ETF"},
+            {"ticker": "VTEI", "title": "Vanguard Intermediate-Term Tax-Exempt Bond ETF"},
+            
+            # Other Popular ETFs
+            {"ticker": "SPY", "title": "SPDR S&P 500 ETF Trust"},
+            {"ticker": "IVV", "title": "iShares Core S&P 500 ETF"},
+            {"ticker": "QQQ", "title": "Invesco QQQ Trust"},
+            {"ticker": "IWM", "title": "iShares Russell 2000 ETF"},
+            {"ticker": "EFA", "title": "iShares MSCI EAFE ETF"},
+            {"ticker": "AGG", "title": "iShares Core U.S. Aggregate Bond ETF"},
+            {"ticker": "GLD", "title": "SPDR Gold Shares"}
+        ]
+        
+        # Add to search cache if not already present (checking ticker)
+        existing_tickers = {item['ticker'] for item in self.search_cache}
+        
+        for etf in etfs:
+            if etf['ticker'] not in existing_tickers:
+                self.search_cache.append(etf)
+                # Note: We don't have CIKs for these easily available for filing lookups, 
+                # but this enables SEARCH which is the primary request.
+
 
     def get_cik(self, ticker: str):
         return self.ticker_cik_map.get(ticker.upper())

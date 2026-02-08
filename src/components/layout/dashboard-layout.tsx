@@ -1,6 +1,7 @@
 "use client";
 
 import { BarChart3, FileText, Globe, Home, LayoutDashboard, Search, TrendingUp, Target, Users, Menu, Trophy, Shield, Landmark, Building2 } from "lucide-react";
+import { useState, useEffect, ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -11,11 +12,43 @@ import { Sheet, SheetContent, SheetTrigger, SheetTitle, SheetDescription } from 
 export default function DashboardLayout({
   children,
 }: {
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   const searchParams = useSearchParams();
-  const ticker = searchParams.get("ticker") || "AAPL";
+  const currentTicker = searchParams.get("ticker");
   const pathname = usePathname();
+
+  // Initialize with current ticker if not on ETF page, else default or load from storage
+  const [sidebarTicker, setSidebarTicker] = useState("AAPL");
+
+  useEffect(() => {
+    // Logic to update stored ticker
+    // If we are on a main dashboard page (not /etf) and have a ticker, save it.
+    if (currentTicker && !pathname.startsWith("/etf")) {
+        setSidebarTicker(currentTicker);
+        localStorage.setItem("lastStockTicker", currentTicker);
+    } else if (!currentTicker && !pathname.startsWith("/etf")) {
+        // If on main page without ticker, try to load last used
+        const stored = localStorage.getItem("lastStockTicker");
+        if (stored) {
+            setSidebarTicker(stored);
+        }
+    } else if (pathname.startsWith("/etf")) {
+         // On ETF page, we want sidebar to point to last stock, not current ETF
+         const stored = localStorage.getItem("lastStockTicker");
+         if (stored) {
+             setSidebarTicker(stored);
+         }
+    }
+  }, [currentTicker, pathname]);
+
+  // Initial load
+  useEffect(() => {
+      const stored = localStorage.getItem("lastStockTicker");
+      if (stored) {
+          setSidebarTicker(stored);
+      }
+  }, []);
 
   const navItems = [
     { name: "Overview", href: "/", icon: LayoutDashboard },
@@ -25,9 +58,10 @@ export default function DashboardLayout({
     { name: "Forecast", href: "/forecast", icon: Target },
     { name: "Ownership", href: "/ownership", icon: Users },
     { name: "Brand Sentiment", href: "/sentiment", icon: Users },
+    { name: "ETF Analysis", href: "/etf", icon: BarChart3 },
     { name: "Watchlist", href: "/watchlist", icon: FileText },
     { name: "Finder", href: "/finder", icon: Search },
-    { name: "Market Heatmap", href: "/heatmap", icon: LayoutDashboard }, // Using LayoutDashboard or similar
+    { name: "Market Heatmap", href: "/heatmap", icon: LayoutDashboard }, 
     { name: "Institutional Trackers", href: "/institutional", icon: Building2 },
     { name: "US House Tracker", href: "/house", icon: Landmark },
     { name: "US Senate Tracker", href: "/senate", icon: Landmark },
@@ -38,7 +72,7 @@ export default function DashboardLayout({
 
   const SidebarContent = () => (
     <div className="h-full flex flex-col">
-      <Link href={`/?ticker=${ticker}`} className="flex items-center gap-2 mb-8 hover:opacity-80 transition-opacity">
+      <Link href={`/?ticker=${sidebarTicker}`} className="flex items-center gap-2 mb-8 hover:opacity-80 transition-opacity">
         <div className="h-8 w-8 bg-primary rounded-lg flex items-center justify-center">
           <TrendingUp className="h-5 w-5 text-primary-foreground" />
         </div>
@@ -48,11 +82,29 @@ export default function DashboardLayout({
       <nav className="flex-1 space-y-2">
         {navItems.map((item) => {
           const isActive = pathname === item.href;
+          // For ETF page, use the current ETF ticker if available, otherwise just link to base
+          // Actually, if we are ON the ETF page, the ETF link should probably stay on current ETF or reset?
+          // If we navigate TO ETF page from sidebar, we might want a default or search?
+          // Let's keep it simple: All non-ETF links use sidebarTicker. 
+          // ETF link: If we are already on ETF page, preserve current ticker? 
+          //           If we are NOT on ETF page, maybe default to "VOO" or just /etf (which defaults to VOO)?
+          
+          let linkHref = `${item.href}?ticker=${sidebarTicker}`;
+          
+          if (item.href === "/etf") {
+              // If we are navigating TO the ETF page
+              if (pathname.startsWith("/etf") && currentTicker) {
+                  linkHref = `${item.href}?ticker=${currentTicker}`; // Keep current ETF while clicking ETF link
+              } else {
+                  linkHref = `${item.href}`; // Default behavior (defaults to VOO in page logic)
+              }
+          }
+
           return (
             <div key={item.href}>
                 {item.name === "Watchlist" && <div className="my-2 mx-3 border-t border-border" />}
                 <Link 
-                href={`${item.href}?ticker=${ticker}`} 
+                href={linkHref} 
                 className={cn(
                     "flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md transition-colors",
                     isActive 
@@ -101,7 +153,11 @@ export default function DashboardLayout({
                 </Sheet>
             </div>
 
-            <TickerSearch />
+            {pathname.startsWith("/etf") ? (
+                <TickerSearch redirectBase="/etf" placeholder="Search ETF (e.g. VOO)..." />
+            ) : (
+                <TickerSearch />
+            )}
             <div className="flex items-center gap-4">
                 <Button variant="ghost" size="icon">
                     <div className="h-8 w-8 rounded-full bg-secondary" />
