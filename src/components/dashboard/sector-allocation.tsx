@@ -64,7 +64,7 @@ export function SectorAllocation({ sectors }: SectorAllocationProps) {
                                 ))}
                             </Pie>
                             <Tooltip 
-                                formatter={(value: number) => ((value || 0) * 100).toFixed(2) + "%"}
+                                formatter={(value: any) => ((value || 0) * 100).toFixed(2) + "%"}
                                 contentStyle={{ backgroundColor: 'hsl(var(--card))', borderColor: 'hsl(var(--border))', borderRadius: '8px' }}
                                 itemStyle={{ color: 'hsl(var(--foreground))' }}
                             />
