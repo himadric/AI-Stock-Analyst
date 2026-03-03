@@ -220,7 +220,15 @@ function ForecastContent() {
                                             {action.to_grade}
                                         </Badge>
                                     </TableCell>
-                                    <TableCell>{action.action}</TableCell>
+                                    <TableCell>
+                                        {{
+                                            "main": "Maintains",
+                                            "reit": "Reiterates",
+                                            "init": "Initiates",
+                                            "up": "Upgrades",
+                                            "down": "Downgrades"
+                                        }[action.action.toLowerCase()] || action.action}
+                                    </TableCell>
                                     <TableCell>
                                         {action.current_price_target > 0 ? (
                                             <div className="flex items-center gap-1">
