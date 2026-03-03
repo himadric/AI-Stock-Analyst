@@ -221,13 +221,13 @@ function ForecastContent() {
                                         </Badge>
                                     </TableCell>
                                     <TableCell>
-                                        {{
+                                        {({
                                             "main": "Maintains",
                                             "reit": "Reiterates",
                                             "init": "Initiates",
                                             "up": "Upgrades",
                                             "down": "Downgrades"
-                                        }[action.action.toLowerCase()] || action.action}
+                                        } as Record<string, string>)[action.action?.toLowerCase()] || action.action}
                                     </TableCell>
                                     <TableCell>
                                         {action.current_price_target > 0 ? (
