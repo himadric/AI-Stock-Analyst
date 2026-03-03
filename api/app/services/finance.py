@@ -763,6 +763,51 @@ class FinanceService:
             print(f"Error fetching forecast for {ticker}: {e}")
             return None
 
+    def get_analyst_actions(self, ticker: str):
+        """
+        Fetches recent analyst upgrades/downgrades.
+        """
+        try:
+            stock = yf.Ticker(ticker)
+            upgrades = stock.upgrades_downgrades
+            
+            if upgrades is None or upgrades.empty:
+                return []
+                
+            # Filter for recent actions (e.g. last 6 months)
+            # upgrades index is the Date
+            cutoff = datetime.now() - timedelta(days=180)
+            recent = upgrades[upgrades.index > cutoff]
+            
+            # Sort descending
+            recent = recent.sort_index(ascending=False)
+            
+            actions = []
+            for date, row in recent.iterrows():
+                # Handle potential column name variations (older yfinance versions might differ)
+                to_grade = row.get("ToGrade") or row.get("To Grade") or ""
+                from_grade = row.get("FromGrade") or row.get("From Grade") or ""
+                action = row.get("Action") or ""
+                
+                # Try to get price targets if available
+                current_target = row.get("currentPriceTarget") or 0
+                prior_target = row.get("priorPriceTarget") or 0
+                
+                actions.append({
+                    "date": date.strftime("%Y-%m-%d"),
+                    "firm": row.get("Firm", "Unknown"),
+                    "to_grade": to_grade,
+                    "from_grade": from_grade,
+                    "action": action,
+                    "current_price_target": float(current_target) if pd.notnull(current_target) else 0,
+                    "prior_price_target": float(prior_target) if pd.notnull(prior_target) else 0
+                })
+                
+            return actions
+        except Exception as e:
+            print(f"Error fetching analyst actions for {ticker}: {e}")
+            return []
+
     def get_etf_details(self, ticker: str):
         """
         Fetches detailed ETF data for AI analysis, including calculated metrics.
