@@ -1,3 +1,4 @@
+import os
 import requests
 import json
 from bs4 import BeautifulSoup
@@ -6,7 +7,7 @@ import pandas as pd
 
 # Vanguard Group CIK
 CIK = "0000102909"
-USER_AGENT = "AIAnalyst/1.0 (himadric@gmail.com)"
+USER_AGENT = os.getenv("SEC_USER_AGENT", "AIAnalyst/1.0")
 
 headers = {"User-Agent": USER_AGENT}
 

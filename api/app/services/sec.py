@@ -1,3 +1,4 @@
+import os
 import requests
 import pandas as pd
 from datetime import datetime
@@ -5,9 +6,13 @@ from bs4 import BeautifulSoup
 
 class SECService:
     def __init__(self):
-        # User-Agent is REQUIRED by SEC.gov
+        # User-Agent is REQUIRED by SEC.gov and must include a contact email: "AppName you@example.com"
+        user_agent = os.getenv("SEC_USER_AGENT")
+        if not user_agent:
+            print("Warning: SEC_USER_AGENT not set; SEC.gov may reject requests without a contact email.")
+            user_agent = "AIAnalyst/1.0"
         self.headers = {
-            "User-Agent": "AIAnalyst/1.0 (himadric@gmail.com)"
+            "User-Agent": user_agent
         }
         self.ticker_cik_map = {} 
         # Cache for search list: [{"ticker": "AAPL", "title": "Apple Inc."}, ...]
