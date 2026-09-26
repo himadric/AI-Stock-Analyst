@@ -1,13 +1,17 @@
 import { NextResponse } from 'next/server';
 import clientPromise from '@/lib/mongodb';
-
-export const revalidate = 3600; // Revalidate at most every hour
+import { auth } from '@/auth';
 
 export async function GET() {
+  const session = await auth();
+  if (!session?.user) {
+    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  }
+
   try {
     const client = await clientPromise;
     const db = client.db("ai_stock_analyst");
-    
+
     // Sort by Market Cap descending usually, or just fetch all
     const data = await db.collection("snp_heatmap_data")
       .find({})

@@ -8,5 +8,6 @@ export default auth((req) => {
 })
  
 export const config = {
-  matcher: ["/((?!api|auth_endpoints|_next/static|_next/image|favicon.ico).*)"],
+  // /api and /session-token check the session themselves and return 401 instead of redirecting
+  matcher: ["/((?!api|auth_endpoints|session-token|_next/static|_next/image|favicon.ico).*)"],
 }

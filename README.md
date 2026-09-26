@@ -152,6 +152,8 @@ Fill in **`api/.env`** (backend):
 | `SEC_USER_AGENT` | Your app name and email, for example `"AIAnalyst you@example.com"`. SEC.gov requires a contact email on every request |
 | `FMP_API_KEY` | Your Financial Modeling Prep key (optional) |
 | `YOUTUBE_API_KEY` | Your YouTube Data API key (optional) |
+| `AUTH_SECRET` | **The same value as in `.env.local`.** The backend uses it to check that each request comes from a signed-in user |
+| `ALLOWED_USER_EMAIL` | The same email as in `.env.local` |
 
 #### Start
 
@@ -171,7 +173,12 @@ npm run dev
 
 Open http://localhost:3000. You'll be sent to the login page. Click **Sign in with Google** and choose the account you set as `ALLOWED_USER_EMAIL`.
 
-The backend also serves interactive API docs at http://127.0.0.1:8000/docs.
+The backend also serves interactive API docs at http://127.0.0.1:8000/docs. Every endpoint except `/api/health` needs a token:
+
+1. While signed in to the app, open http://localhost:3000/session-token and copy the `token` value. It's valid for one hour.
+2. On the docs page, open an endpoint, click **Try it out**, and enter `Bearer <token>` in the **authorization** field.
+
+The same token works from the command line: `curl -H "Authorization: Bearer <token>" http://127.0.0.1:8000/api/finance/info/AAPL`.
 
 ### 4. Load the market data
 
@@ -206,14 +213,14 @@ The frontend and the Python API deploy together as one Vercel project.
 2. Import **your fork**. Keep the detected **Next.js** framework preset and the default root directory.
 3. Under **Environment Variables**, add every setting from both `.env.local` and `api/.env`, with these two changes:
    - Set `AUTH_URL` to `https://<your-app>.vercel.app/auth_endpoints`.
-   - Use a new `AUTH_SECRET` instead of your local one.
+   - Use a new `AUTH_SECRET` instead of your local one. Add it once; the frontend and the backend both read it.
 4. Click **Deploy**. Vercel builds the Next.js app and turns `api/index.py` into a Python serverless function automatically.
 5. Add your Vercel address to your Google OAuth client, as shown in the table in [Google sign-in](#google-sign-in-oauth-client).
 6. Make sure MongoDB Atlas **Network Access** allows `0.0.0.0/0`, since Vercel's IP addresses change.
 
 Each push to your fork's default branch then redeploys the app.
 
-> **Security note:** sign-in protects the app's pages, but the backend API under `/api` has no authentication of its own. Anyone who knows your deployment's address can call it, including the Gemini-backed AI endpoints, which use your API key. Share your deployment address carefully, and consider setting a usage limit on your Gemini key.
+> **How the API is protected:** every backend request needs a short-lived token that the app issues only to the signed-in `ALLOWED_USER_EMAIL` account. Visitors who aren't signed in can't use your Gemini key or change your data, even if they know your deployment's address. Only `/api/health` is public.
 
 ### Troubleshooting
 
@@ -222,6 +229,11 @@ Each push to your fork's default branch then redeploys the app.
 | Google shows `Error 400: redirect_uri_mismatch` | Add the exact redirect URI from the [table above](#google-sign-in-oauth-client) to your OAuth client. Changes can take a few minutes to apply. |
 | Google shows `Access blocked` or the app shows `AccessDenied` | Add your email as a **test user** on the OAuth consent screen, and check that `ALLOWED_USER_EMAIL` matches it exactly. |
 | Watchlist, trackers or rankings return errors, or the backend log shows `bad auth` | Check the username and password in `MONGO_URI`, and that your IP (or `0.0.0.0/0`) is allowed under Atlas **Network Access**. |
+| Every page shows no data and the backend returns `401` or `Server authentication is not configured` | Set `AUTH_SECRET` in `api/.env` to exactly the same value as in `.env.local`, add `ALLOWED_USER_EMAIL`, then restart the backend. |
 | AI buttons show `Error from AI Provider` | Check `GEMINI_API_KEY` in `api/.env`, then restart the backend. It reads `.env` only at startup. |
 | Pages show no data locally | Make sure the backend is running on port 8000. The frontend calls it directly during development. |
 | Heatmap, rankings or trackers are empty | Run the scripts in [Load the market data](#4-load-the-market-data). |
+
+## License
+
+[MIT](LICENSE). You're free to use, change and share this code, including in your own projects, as long as you keep the copyright and license notice.

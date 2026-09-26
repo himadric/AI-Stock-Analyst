@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Loader2, Sparkles, FileText } from "lucide-react";
 import ReactMarkdown from "react-markdown";
+import { analyzeEtf } from "@/lib/api";
 
 interface EtfAiAnalysisProps {
   ticker: string;
@@ -19,19 +20,7 @@ export function EtfAiAnalysis({ ticker }: EtfAiAnalysisProps) {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch("http://localhost:8000/api/ai/analyze_etf", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ ticker }),
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to generate analysis");
-      }
-
-      const data = await response.json();
+      const data = await analyzeEtf(ticker);
       setAnalysis(data.analysis);
     } catch (err) {
       setError(err instanceof Error ? err.message : "An error occurred");
