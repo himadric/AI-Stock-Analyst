@@ -48,6 +48,7 @@ There is no automated test suite. Check your changes by running both servers and
 | `api/.env` | `FMP_API_KEY` | Congress/House/Senate trades |
 | `api/.env` | `YOUTUBE_API_KEY` | Brand sentiment (optional; if it's missing, YouTube is skipped) |
 | `api/.env` | `SEC_USER_AGENT` | `"AppName you@example.com"`, which SEC.gov requires on every EDGAR request |
+| `api/.env` | `AUTH_SECRET`, `ALLOWED_USER_EMAIL` | **Same values as `.env.local`.** Used to verify API session tokens |
 
 Templates live in `.env.example` (frontend) and `api/.env.example` (backend). Never commit real values: the example files hold placeholders only, and credentials, emails and connection strings are always read from the environment and never hard-coded (not even as `os.getenv` defaults). CI jobs get their values from GitHub Secrets.
 
@@ -56,7 +57,8 @@ Templates live in `.env.example` (frontend) and `api/.env.example` (backend). Ne
 ```
 src/
   app/<route>/page.tsx        one folder per dashboard page (all client components)
-  app/api/heatmap/...         the ONLY Next.js route handler (reads Mongo directly)
+  app/api/heatmap/...         Next.js route handler that reads Mongo directly (checks the session itself)
+  app/session-token/route.ts  issues the short-lived API token for the signed-in user
   app/auth_endpoints/...      NextAuth handlers (basePath is /auth_endpoints, not /api/auth)
   components/layout/dashboard-layout.tsx   sidebar nav + header ticker search
   components/dashboard/*.tsx  feature components (kebab-case files, named exports)
@@ -70,6 +72,7 @@ api/
   app/api/<domain>.py         thin routers; registered in app/api/__init__.py
   app/services/<domain>.py    business logic / external API calls
   app/db.py                   shared MongoClient singleton (`db.get_db()`)
+  app/auth.py                 `require_auth` dependency: verifies the API token on every router but /health
   app/data/*.json             static data (S&P index constituents, UEI map)
   scripts/update_*.py         batch jobs that write Mongo snapshots
   utils/                      more batch jobs + one-off tools
@@ -101,11 +104,11 @@ api/
 
 ### 3. Frontend fetcher
 
-Add a typed function to `src/lib/api.ts`. **Never call `fetch` with a hard-coded host in a component.** `API_BASE_URL` already switches between `http://127.0.0.1:8000/api` (dev) and `/api` (prod). Pattern:
+Add a typed function to `src/lib/api.ts` that calls **`apiFetch`**. **Never call `fetch` for backend endpoints directly, in `lib/api.ts` or in a component.** `apiFetch` attaches the session token the backend requires (every request without it gets a 401), and it prepends `API_BASE_URL`, which switches between `http://127.0.0.1:8000/api` (dev) and `/api` (prod). Pattern:
 
 ```ts
 export async function fetchThing(ticker: string) {
-    const res = await fetch(`${API_BASE_URL}/finance/thing/${ticker}`);
+    const res = await apiFetch(`/finance/thing/${ticker}`);
     if (!res.ok) throw new Error("Failed to fetch thing");   // or `return null` for optional data
     return res.json();
 }
@@ -167,7 +170,7 @@ When data is too slow to fetch on each request (13F parsing, scoring hundreds of
 
 ## Gotchas
 
-- **Auth covers pages only.** `middleware.ts` excludes `/api`, so FastAPI endpoints are unauthenticated in production. Keep that in mind before adding write or expensive endpoints.
+- **How API auth works.** `middleware.ts` protects pages only. The API is protected separately: `lib/api.ts` gets a 1-hour HS256 token from `/session-token` (issued only to the signed-in `ALLOWED_USER_EMAIL`) and sends it as `Authorization: Bearer`, and `api/app/auth.py` verifies it. Both sides derive the signing key from `AUTH_SECRET` using the context string `ai-analyst-api-token`; keep those in sync. A new router is protected automatically when you register it with `dependencies=protected` in `app/api/__init__.py`. Only `/health` is public. New Next.js route handlers under `/api` must call `auth()` themselves.
 - **The `/api` namespace is shared.** The Next route `src/app/api/heatmap/relative-strength` wins over the dev rewrite and the Vercel rewrite only because filesystem routes resolve first. Don't add FastAPI routes under `/api/heatmap/`.
 - The FastAPI CORS allow-list is localhost-only. Production works because the call is same-origin through the Vercel rewrite.
 - NextAuth uses `basePath: "/auth_endpoints"`, not the default `/api/auth`, so it doesn't collide with the FastAPI proxy.

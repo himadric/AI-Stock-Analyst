@@ -2,45 +2,84 @@ const API_BASE_URL = process.env.NODE_ENV === "production"
     ? "/api" 
     : "http://127.0.0.1:8000/api";
 
+// Short-lived token from /session-token that the FastAPI backend requires on every request.
+// The promise is cached so parallel requests share one token fetch.
+let tokenPromise: Promise<{ token: string; expiresAt: number }> | null = null;
+
+async function getApiToken(forceRefresh = false): Promise<string> {
+    const now = Math.floor(Date.now() / 1000);
+    if (forceRefresh || !tokenPromise) {
+        tokenPromise = null;
+    } else {
+        const cached = await tokenPromise.catch(() => null);
+        if (!cached || cached.expiresAt - 60 <= now) tokenPromise = null;
+    }
+
+    if (!tokenPromise) {
+        tokenPromise = fetch("/session-token", { cache: "no-store" }).then(async (res) => {
+            if (res.status === 401 && typeof window !== "undefined") {
+                window.location.href = "/login";
+            }
+            if (!res.ok) throw new Error("Not authenticated");
+            return res.json();
+        });
+        tokenPromise.catch(() => { tokenPromise = null; });
+    }
+
+    return (await tokenPromise).token;
+}
+
+// fetch() against the FastAPI backend with the session token attached; retries once on 401.
+async function apiFetch(path: string, init: RequestInit = {}): Promise<Response> {
+    const send = async (forceRefresh: boolean) => {
+        const headers = new Headers(init.headers);
+        headers.set("Authorization", `Bearer ${await getApiToken(forceRefresh)}`);
+        return fetch(`${API_BASE_URL}${path}`, { ...init, headers });
+    };
+
+    const res = await send(false);
+    return res.status === 401 ? send(true) : res;
+}
+
 export async function fetchCompanyInfo(ticker: string) {
-    const res = await fetch(`${API_BASE_URL}/finance/info/${ticker}`);
+    const res = await apiFetch(`/finance/info/${ticker}`);
     if (!res.ok) throw new Error("Failed to fetch company info");
     return res.json();
 }
 
 export async function fetchPeerComparison(ticker: string) {
-    const res = await fetch(`${API_BASE_URL}/finance/peers/${ticker}`);
+    const res = await apiFetch(`/finance/peers/${ticker}`);
     if (!res.ok) throw new Error("Failed to fetch peer data");
      // Returns list of metrics for peers
     return res.json();
 }
 
 export async function fetchMarketMap(type: "sector" | "factor" = "sector") {
-    const res = await fetch(`${API_BASE_URL}/finance/market-map?map_type=${type}`);
+    const res = await apiFetch(`/finance/market-map?map_type=${type}`);
     if (!res.ok) throw new Error("Failed to fetch market map");
     return res.json();
 }
 
 export async function fetchHistoricalMetrics(ticker: string) {
-    const res = await fetch(`${API_BASE_URL}/finance/historical-metrics/${ticker}`);
+    const res = await apiFetch(`/finance/historical-metrics/${ticker}`);
     if (!res.ok) throw new Error("Failed to fetch historical metrics");
     return res.json();
 }
 
 export async function fetchStockHistory(ticker: string, period: string = "1y", interval: string = "1d") {
-    const res = await fetch(`${API_BASE_URL}/finance/history/${ticker}?period=${period}&interval=${interval}`);
+    const res = await apiFetch(`/finance/history/${ticker}?period=${period}&interval=${interval}`);
     if (!res.ok) throw new Error("Failed to fetch stock history");
     return res.json();
 }
 
 export async function fetchSECFilings(ticker: string) {
-    const res = await fetch(`${API_BASE_URL}/sec/filings/${ticker}`);
+    const res = await apiFetch(`/sec/filings/${ticker}`);
     if (!res.ok) throw new Error("Failed to fetch filings");
     return res.json();
 }
 
 export async function analyzeFiling(ticker: string, url: string) {
-    const res = await fetch(`${API_BASE_URL}/ai/analyze_filing`, {
+    const res = await apiFetch(`/ai/analyze_filing`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ticker, url }),
@@ -50,50 +89,50 @@ export async function analyzeFiling(ticker: string, url: string) {
 }
 
 export async function searchTickers(query: string) {
-    const res = await fetch(`${API_BASE_URL}/sec/search?query=${encodeURIComponent(query)}`);
+    const res = await apiFetch(`/sec/search?query=${encodeURIComponent(query)}`);
     if (!res.ok) throw new Error("Failed to search tickers");
     return res.json();
 }
 
 export async function fetchQuotes(symbols: string[]) {
     const symbolsStr = symbols.join(",");
-    const res = await fetch(`${API_BASE_URL}/finance/quotes?symbols=${symbolsStr}`);
+    const res = await apiFetch(`/finance/quotes?symbols=${symbolsStr}`);
     if (!res.ok) throw new Error("Failed to fetch quotes");
     return res.json();
 }
 
 export async function fetchCompanyNews(ticker: string) {
-    const res = await fetch(`${API_BASE_URL}/finance/news/${ticker}`);
+    const res = await apiFetch(`/finance/news/${ticker}`);
     if (!res.ok) throw new Error("Failed to fetch news");
     return res.json();
 }
 
 export async function fetchFinancials(ticker: string) {
-    const res = await fetch(`${API_BASE_URL}/finance/financials/${ticker}`);
+    const res = await apiFetch(`/finance/financials/${ticker}`);
     if (!res.ok) throw new Error("Failed to fetch financials");
     return res.json();
 }
 
 export async function fetchBalanceSheet(ticker: string) {
-    const res = await fetch(`${API_BASE_URL}/finance/financials/balance-sheet/${ticker}`);
+    const res = await apiFetch(`/finance/financials/balance-sheet/${ticker}`);
     if (!res.ok) throw new Error("Failed to fetch balance sheet");
     return res.json();
 }
 
 export async function fetchCashFlow(ticker: string) {
-    const res = await fetch(`${API_BASE_URL}/finance/financials/cash-flow/${ticker}`);
+    const res = await apiFetch(`/finance/financials/cash-flow/${ticker}`);
     if (!res.ok) throw new Error("Failed to fetch cash flow");
     return res.json();
 }
 
 export async function fetchRatios(ticker: string) {
-    const res = await fetch(`${API_BASE_URL}/finance/financials/ratios/${ticker}`);
+    const res = await apiFetch(`/finance/financials/ratios/${ticker}`);
     if (!res.ok) throw new Error("Failed to fetch ratios");
     return res.json();
 }
 
 export async function analyzeNews(ticker: string, news: any[]) {
-    const res = await fetch(`${API_BASE_URL}/ai/analyze_news`, {
+    const res = await apiFetch(`/ai/analyze_news`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ticker, news }),
@@ -103,7 +142,7 @@ export async function analyzeNews(ticker: string, news: any[]) {
 }
 
 export async function analyzeChart(ticker: string, period: string, interval: string) {
-    const res = await fetch(`${API_BASE_URL}/ai/analyze_chart`, {
+    const res = await apiFetch(`/ai/analyze_chart`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ticker, period, interval }),
@@ -113,31 +152,31 @@ export async function analyzeChart(ticker: string, period: string, interval: str
 }
 
 export async function fetchForecast(ticker: string) {
-    const res = await fetch(`${API_BASE_URL}/finance/forecast/${ticker}`);
+    const res = await apiFetch(`/finance/forecast/${ticker}`);
     if (!res.ok) throw new Error("Failed to fetch forecast");
     return res.json();
 }
 
 export async function fetchAnalystActions(ticker: string) {
-    const res = await fetch(`${API_BASE_URL}/finance/forecast/actions/${ticker}`);
+    const res = await apiFetch(`/finance/forecast/actions/${ticker}`);
     if (!res.ok) throw new Error("Failed to fetch analyst actions");
     return res.json();
 }
 
 export async function fetchOwnership(ticker: string) {
-    const res = await fetch(`${API_BASE_URL}/finance/ownership/${ticker}`);
+    const res = await apiFetch(`/finance/ownership/${ticker}`);
     if (!res.ok) return null; // Return null on 404/500 to handle gracefully
     return res.json();
 }
 
 export async function fetchOwnershipDetails(ticker: string) {
-    const res = await fetch(`${API_BASE_URL}/finance/ownership/details/${ticker}`);
+    const res = await apiFetch(`/finance/ownership/details/${ticker}`);
     if (!res.ok) return { institutions: [], insiders: [] };
     return res.json();
 }
 
 export async function analyzeValuation(ticker: string) {
-    const res = await fetch(`${API_BASE_URL}/ai/analyze_valuation`, {
+    const res = await apiFetch(`/ai/analyze_valuation`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ticker }),
@@ -147,7 +186,7 @@ export async function analyzeValuation(ticker: string) {
 }
 
 export async function analyzeRisk(ticker: string) {
-    const res = await fetch(`${API_BASE_URL}/ai/analyze_risk`, {
+    const res = await apiFetch(`/ai/analyze_risk`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ticker }),
@@ -156,20 +195,30 @@ export async function analyzeRisk(ticker: string) {
     return res.json();
 }
 
+export async function analyzeEtf(ticker: string) {
+    const res = await apiFetch(`/ai/analyze_etf`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ticker }),
+    });
+    if (!res.ok) throw new Error("Failed to generate analysis");
+    return res.json();
+}
+
 export async function fetchMacroData() {
-    const res = await fetch(`${API_BASE_URL}/finance/macro`);
+    const res = await apiFetch(`/finance/macro`);
     if (!res.ok) throw new Error("Failed to fetch macro data");
     return res.json();
 }
 
 export async function fetchSectorPerformance() {
-    const res = await fetch(`${API_BASE_URL}/finance/sectors`);
+    const res = await apiFetch(`/finance/sectors`);
     if (!res.ok) throw new Error("Failed to fetch sector data");
     return res.json();
 }
 
 export async function analyzeMacroMarket(macro_data: any[], sector_data: any[]) {
-    const res = await fetch(`${API_BASE_URL}/ai/analyze_macro_market`, {
+    const res = await apiFetch(`/ai/analyze_macro_market`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ macro_data, sector_data }),
@@ -179,26 +228,26 @@ export async function analyzeMacroMarket(macro_data: any[], sector_data: any[]) 
 }
 
 export async function fetchFutureLeaderScore(ticker: string) {
-    const res = await fetch(`${API_BASE_URL}/finance/score/${ticker}`);
+    const res = await apiFetch(`/finance/score/${ticker}`);
     if (!res.ok) return null;
     return res.json();
 }
 
 export async function fetchRankings(category: string = "Small Cap", page: number = 1, limit: number = 10) {
-    const res = await fetch(`${API_BASE_URL}/finance/rankings?category=${encodeURIComponent(category)}&page=${page}&limit=${limit}`);
+    const res = await apiFetch(`/finance/rankings?category=${encodeURIComponent(category)}&page=${page}&limit=${limit}`);
     if (!res.ok) throw new Error("Failed to fetch rankings");
     return res.json();
 }
 
 export async function fetchGovtRankings() {
-    const res = await fetch(`${API_BASE_URL}/finance/govt/rankings`);
+    const res = await apiFetch(`/finance/govt/rankings`);
     if (!res.ok) throw new Error("Failed to fetch govt rankings");
     return res.json();
 }
 
 // Sentiment
 export async function fetchSentiment(ticker: string) {
-  const res = await fetch(`${API_BASE_URL}/sentiment/${ticker}`);
+  const res = await apiFetch(`/sentiment/${ticker}`);
   if (!res.ok) {
      if (res.status === 404) return null;
      throw new Error("Failed to fetch sentiment");
@@ -208,7 +257,7 @@ export async function fetchSentiment(ticker: string) {
 
 // Vanguard Tracker
 export async function fetchVanguardTrades(limit: number = 100) {
-    const res = await fetch(`${API_BASE_URL}/vanguard/trades?limit=${limit}`);
+    const res = await apiFetch(`/vanguard/trades?limit=${limit}`);
     if (!res.ok) {
         throw new Error("Failed to fetch vanguard trades");
     }
@@ -217,7 +266,7 @@ export async function fetchVanguardTrades(limit: number = 100) {
 
 // Munro Partners Tracker
 export async function fetchMunroTrades(limit: number = 100) {
-    const res = await fetch(`${API_BASE_URL}/munro/trades?limit=${limit}`);
+    const res = await apiFetch(`/munro/trades?limit=${limit}`);
     if (!res.ok) {
         throw new Error("Failed to fetch munro trades");
     }
@@ -226,7 +275,7 @@ export async function fetchMunroTrades(limit: number = 100) {
 
 // Congress Tracker
 export async function fetchCongressTrades(limit: number = 100) {
-    const res = await fetch(`${API_BASE_URL}/congress/trades?limit=${limit}`);
+    const res = await apiFetch(`/congress/trades?limit=${limit}`);
     if (!res.ok) {
         throw new Error("Failed to fetch congress trades");
     }
@@ -235,7 +284,7 @@ export async function fetchCongressTrades(limit: number = 100) {
 
 // US House Tracker
 export async function fetchHouseTrades() {
-    const res = await fetch(`${API_BASE_URL}/house/trades`);
+    const res = await apiFetch(`/house/trades`);
     if (!res.ok) {
         throw new Error("Failed to fetch house trades");
     }
@@ -244,7 +293,7 @@ export async function fetchHouseTrades() {
 
 // US Senate Tracker
 export async function fetchSenateTrades() {
-    const res = await fetch(`${API_BASE_URL}/senate/trades`);
+    const res = await apiFetch(`/senate/trades`);
     if (!res.ok) {
         throw new Error("Failed to fetch senate trades");
     }
@@ -254,7 +303,7 @@ export async function fetchSenateTrades() {
 // Simulation
 // Simulation
 export async function runSimulation(ticker: string, wacc: number, growth_rate_mean: number | null, simulations: number = 10000, bear_case: boolean = false) {
-    const res = await fetch(`${API_BASE_URL}/simulation/run`, {
+    const res = await apiFetch(`/simulation/run`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
@@ -271,13 +320,13 @@ export async function runSimulation(ticker: string, wacc: number, growth_rate_me
 
 // Watchlist
 export async function getWatchlist() {
-    const res = await fetch(`${API_BASE_URL}/watchlist`);
+    const res = await apiFetch(`/watchlist`);
     if (!res.ok) throw new Error("Failed to fetch watchlist");
     return res.json();
 }
 
 export async function addToWatchlist(ticker: string) {
-    const res = await fetch(`${API_BASE_URL}/watchlist`, {
+    const res = await apiFetch(`/watchlist`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ticker }),
@@ -287,7 +336,7 @@ export async function addToWatchlist(ticker: string) {
 }
 
 export async function removeFromWatchlist(ticker: string) {
-    const res = await fetch(`${API_BASE_URL}/watchlist/${ticker}`, {
+    const res = await apiFetch(`/watchlist/${ticker}`, {
         method: "DELETE",
     });
     if (!res.ok) throw new Error("Failed to remove from watchlist");

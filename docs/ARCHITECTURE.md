@@ -93,8 +93,30 @@ sequenceDiagram
     M-->>B: page
 ```
 
-- The middleware matcher is `/((?!api|auth_endpoints|_next/static|_next/image|favicon.ico).*)`, so **only pages are protected**. `/api/*` (FastAPI and the heatmap route) is not behind auth. See §9.
+- The middleware matcher is `/((?!api|auth_endpoints|session-token|_next/static|_next/image|favicon.ico).*)`, so the middleware protects **pages** only. The API is protected separately, as §2.3 describes.
 - A custom PKCE cookie name is configured to work around Auth.js configuration errors behind Vercel (`AUTH_TRUST_HOST`, `AUTH_URL`).
+
+### 2.3 API authentication
+
+The FastAPI backend can't read the NextAuth session cookie: in dev it runs on a different host (`127.0.0.1:8000`), and the cookie is encrypted in an Auth.js-specific format. So the app uses a short-lived bearer token instead:
+
+```mermaid
+sequenceDiagram
+    participant B as Browser (lib/api.ts)
+    participant T as /session-token (Next route)
+    participant F as FastAPI (require_auth)
+    B->>T: GET /session-token (session cookie)
+    T->>T: auth() → email === ALLOWED_USER_EMAIL ?
+    T-->>B: {token, expiresAt} (HS256 JWT, 1 h) or 401
+    B->>F: GET /api/finance/... Authorization: Bearer <token>
+    F->>F: verify signature, exp, sub
+    F-->>B: 200 data, or 401
+```
+
+- **Signing key:** `HMAC-SHA256(AUTH_SECRET, "ai-analyst-api-token")`, derived the same way in `src/app/session-token/route.ts` and `api/app/auth.py`, so one secret serves both sides without being reused directly.
+- **Client (`apiFetch` in `lib/api.ts`):** caches the token *promise*, so parallel requests share one fetch. It refreshes 60 s before expiry and retries once on a 401. If `/session-token` returns 401, it redirects to `/login`.
+- **Server (`require_auth`):** attached to every router except `health` in `app/api/__init__.py`. It fails closed with a 500 if `AUTH_SECRET` is missing. If `ALLOWED_USER_EMAIL` is set, the token subject must match it.
+- The Next heatmap route calls `auth()` itself and returns 401 without a session.
 
 ---
 
@@ -156,7 +178,7 @@ export default Page  →  <Suspense fallback={spinner}>
 | `/forecast` | Analyst targets/recommendations plus recent up/downgrades | `fetchForecast`, `fetchAnalystActions` | (inline) |
 | `/ownership` | Insider/institution split, top holders, insider transactions | `fetchOwnership`, `fetchOwnershipDetails` | (inline) |
 | `/sentiment` | Brand sentiment (Yahoo news + YouTube, VADER) | `fetchSentiment` | `sentiment-dashboard` |
-| `/etf` | ETF overview, holdings, sector weights, chart, AI "Quality Core" analysis | `fetchCompanyInfo`, `fetchCompanyNews`, `fetchStockHistory`, `analyzeNews`; `etf-ai-analysis` POSTs `/ai/analyze_etf` directly (see §9) | `etf-overview`, `etf-holdings`, `sector-allocation`, `etf-ai-analysis`, `stock-chart` |
+| `/etf` | ETF overview, holdings, sector weights, chart, AI "Quality Core" analysis | `fetchCompanyInfo`, `fetchCompanyNews`, `fetchStockHistory`, `analyzeNews`; `analyzeEtf` (in `etf-ai-analysis`) | `etf-overview`, `etf-holdings`, `sector-allocation`, `etf-ai-analysis`, `stock-chart` |
 | `/watchlist` | Saved tickers with live price/change | `getWatchlist`, `removeFromWatchlist` | `watchlist-table` |
 | `/finder` | Sector map or 3×3 style box of curated tickers with quotes | `fetchMarketMap`, `fetchQuotes` | (inline) |
 | `/heatmap` | S&P 500 treemap coloured by 1m/3m/6m relative strength | `fetch('/api/heatmap/relative-strength')` (Next route → Mongo) | `heatmap/SnpHeatmap` |
@@ -349,8 +371,8 @@ Ordered roughly by priority.
 | # | Area | Issue | Suggested direction |
 |---|---|---|---|
 | 1 | **Security** | `api/.env.example` is committed with what look like **real credentials** (Gemini API key, Pinecone key, a Supabase Postgres URL with password). `yf_keys.txt` is also committed. | Rotate those keys now, replace the values with placeholders, and consider purging them from git history. |
-| 2 | **Security** | The FastAPI endpoints are **unauthenticated** in production, because the middleware skips `/api`. Anyone who knows the URL can call the Gemini-backed `/ai/*` endpoints (a cost exposure) and write to or delete from `/watchlist`. | Check the NextAuth session JWT in FastAPI (a shared `AUTH_SECRET`), or add a shared-secret header injected by a Next proxy. |
-| 3 | Bug | `components/dashboard/etf-ai-analysis.tsx` calls `http://localhost:8000/api/ai/analyze_etf` directly, so **the ETF AI analysis fails in production**. | Add `analyzeEtf()` to `lib/api.ts` and use it. |
+| 2 | ~~Security~~ | ✅ **Fixed.** FastAPI endpoints now require a session token (§2.3). | — |
+| 3 | ~~Bug~~ | ✅ **Fixed.** `etf-ai-analysis.tsx` now uses `analyzeEtf()` from `lib/api.ts` instead of `localhost:8000`. | — |
 | 4 | Performance | Many `async def` handlers (in `finance.py`, `ai.py`, `watchlist.py`, `simulation.py`) call blocking yfinance, httpx, and pymongo, which blocks the event loop. | Change them to `def` so FastAPI runs them in its threadpool. |
 | 5 | Performance | `SECService()` downloads `company_tickers.json` in its constructor. It is created in `sec.py`, `ai.py`, and inside each `InstitutionService` (`institution.py`, `munro.py`), so a cold start makes about 4 SEC downloads. | Use a module-level shared instance or `functools.cache`. |
 | 6 | Consistency | `house.py`, `senate.py`, and `InstitutionService._get_from_db` create a new `MongoClient` per request (and the first two skip `certifi`). | Use `app.db.db.get_db()`. |
