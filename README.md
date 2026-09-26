@@ -1,36 +1,25 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# AI Analyst
 
-## Getting Started
+AI-powered stock and ETF research dashboard.
 
-First, run the development server:
+## Demo
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+[![Watch the AI Analyst demo on YouTube](docs/media/demo-thumbnail.png)](https://youtu.be/b412Drb1zYM)
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+*Click the image to watch the 7-minute walkthrough on YouTube.*
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## About
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+AI Analyst puts fundamental data, market data and AI-written analysis for a stock or ETF on one dashboard. Search for a ticker to see its key metrics, quarterly financial statements, price charts with technical indicators, analyst forecasts and ownership. You can also run a Monte Carlo DCF valuation, or have Google Gemini summarize SEC filings, flag valuation and risk red flags, and read price charts and macro conditions.
 
-## Learn More
+Beyond single stocks, the app tracks the wider market:
 
-To learn more about Next.js, take a look at the following resources:
+- **Market views:** an S&P 500 relative-strength heatmap, sector performance, and a macro dashboard of indices, rates, currencies and commodities.
+- **Future Leader rankings:** small-, mid- and large-cap companies scored on growth efficiency, R&D intensity, scalability, valuation and ROIC.
+- **Smart-money trackers:** US House and Senate stock trades, Vanguard and Munro Partners 13F moves, and book-to-bill ratios for government contractors.
+- **Brand sentiment:** sentiment scored from news and YouTube reviews.
+- **ETF analysis:** holdings, sector allocation, and an AI "Quality Core" assessment.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+**Built with:** Next.js, React, TypeScript, Tailwind CSS and shadcn/ui on the frontend; Python FastAPI on the backend. Data comes from Yahoo Finance, SEC EDGAR, USAspending.gov and Financial Modeling Prep. Google Gemini writes the AI analysis, MongoDB stores precomputed data, and the app is deployed on Vercel.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how it's built and [CLAUDE.md](CLAUDE.md) for local setup and development conventions.
