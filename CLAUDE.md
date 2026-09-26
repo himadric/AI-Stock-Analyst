@@ -34,7 +34,7 @@ python api/scripts/update_snp_heatmap.py
 PYTHONPATH=api python api/utils/generate_leaderboard.py
 ```
 
-There is no automated test suite. Check your changes by running both servers and loading the affected page. You can also call the endpoint through `/docs` or `curl`. The `api/debug_*.py` and `api/verify_*.py` files are throwaway scripts, not tests.
+There is no automated test suite. Check your changes by running both servers and loading the affected page. You can also call the endpoint through `/docs` or `curl`. Every endpoint except `/api/health` needs `Authorization: Bearer <token>`. While signed in, get a token from `http://localhost:3000/session-token`. The `api/debug_*.py` and `api/verify_*.py` files are throwaway scripts, not tests.
 
 ## Environment variables
 

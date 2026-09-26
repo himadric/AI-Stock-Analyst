@@ -173,7 +173,12 @@ npm run dev
 
 Open http://localhost:3000. You'll be sent to the login page. Click **Sign in with Google** and choose the account you set as `ALLOWED_USER_EMAIL`.
 
-The backend also serves interactive API docs at http://127.0.0.1:8000/docs.
+The backend also serves interactive API docs at http://127.0.0.1:8000/docs. Every endpoint except `/api/health` needs a token:
+
+1. While signed in to the app, open http://localhost:3000/session-token and copy the `token` value. It's valid for one hour.
+2. On the docs page, open an endpoint, click **Try it out**, and enter `Bearer <token>` in the **authorization** field.
+
+The same token works from the command line: `curl -H "Authorization: Bearer <token>" http://127.0.0.1:8000/api/finance/info/AAPL`.
 
 ### 4. Load the market data
 
