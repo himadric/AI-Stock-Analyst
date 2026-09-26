@@ -4,9 +4,9 @@ AI-powered stock and ETF research dashboard.
 
 ## Demo
 
-[![Watch the AI Analyst demo](docs/media/demo-thumbnail.png)](docs/media/stock-analyst-demo.mp4)
+[![Watch the AI Analyst demo on YouTube](docs/media/demo-thumbnail.png)](https://youtu.be/b412Drb1zYM)
 
-*Click the image to watch the 7-minute walkthrough.*
+*Click the image to watch the 7-minute walkthrough on YouTube.*
 
 ## About
 
