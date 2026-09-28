@@ -2,7 +2,7 @@ name: Claude Code Review
 
 on:
   pull_request:
-    types: [opened, ready_for_review, reopened]
+    types: [opened, synchronize, ready_for_review, reopened]
     paths-ignore:
       - "docs/media/**"
       - "**/*.md"
@@ -35,6 +35,7 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
           track_progress: true
           prompt: |
             REPO: ${{ github.repository }}
