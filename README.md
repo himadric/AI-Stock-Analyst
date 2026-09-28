@@ -22,6 +22,8 @@ Beyond single stocks, the app tracks the wider market:
 
 **Built with:** Next.js, React, TypeScript, Tailwind CSS and shadcn/ui on the frontend; Python FastAPI on the backend. Data comes from Yahoo Finance, SEC EDGAR, USAspending.gov and Financial Modeling Prep. Google Gemini writes the AI analysis, MongoDB stores precomputed data, and the app is deployed on Vercel.
 
+Every pull request also gets an automated, advisory-only code review from Claude Code (`.github/workflows/claude-code-review.yml`); see the "Code review checklist" it follows in [CLAUDE.md](CLAUDE.md).
+
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how it's built and [CLAUDE.md](CLAUDE.md) for development conventions.
 
 ---
@@ -204,6 +206,10 @@ To keep this data up to date automatically, use the scheduled GitHub Actions in 
 2. Under **Settings → Secrets and variables → Actions**, add the repository secrets `MONGO_URI`, `FMP_API_KEY` and `SEC_USER_AGENT`.
 
 The workflows in `.github/workflows/` then refresh the heatmap every weekday, the House, Senate, government-contract and ranking data daily or twice daily, and the Vanguard tracker weekly. Each one can also be started by hand from the **Actions** tab. The Munro Partners tracker has no workflow, so run its script by hand.
+
+#### Optional: automated PR review
+
+`.github/workflows/claude-code-review.yml` posts an advisory Claude Code review on pull requests you open into your fork's default branch (see the "Code review checklist" in [CLAUDE.md](CLAUDE.md)). It needs an `ANTHROPIC_API_KEY` repository secret, from [console.anthropic.com](https://console.anthropic.com/). Skip this if you don't want it — without the secret, the workflow just fails quietly on each PR.
 
 ### 5. Deploy it to Vercel (optional)
 
