@@ -1,0 +1,60 @@
+name: Claude Code Review
+
+on:
+  pull_request:
+    types: [opened, ready_for_review, reopened]
+    paths-ignore:
+      - "docs/media/**"
+      - "**/*.md"
+
+concurrency:
+  group: claude-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    # Skip drafts and PRs from forks: forks get no secrets, and their diff isn't trusted.
+    # This also means the review only ever runs on the owner's own branches, since forks
+    # can't push here anyway (see README "Run your own copy": this repo takes no PRs).
+    if: >
+      !github.event.pull_request.draft &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pull-requests: write
+      id-token: write
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Run Claude Code review
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          track_progress: true
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR: ${{ github.event.pull_request.number }}
+
+            Review this pull request against the "Code review checklist" section
+            of CLAUDE.md. The PR branch is already checked out in the working
+            directory, so read full files for context, not just the diff.
+
+            Post ONE top-level summary with `gh pr comment`: a one-line verdict
+            plus what needs fixing, if anything.
+
+            Post inline comments with `mcp__github_inline_comment__create_inline_comment`
+            (confirmed: true) on the exact lines with issues. Tag each one 🔴
+            must-fix, 🟡 should-fix, or 🔵 nit. Cap it at about 10 comments and
+            skip pure style nitpicks the linter would catch anyway.
+
+            This is an advisory review only: do not approve or request changes,
+            and do not edit, fix, or commit anything yourself.
+          claude_args: |
+            --model claude-sonnet-5
+            --max-turns 30
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"

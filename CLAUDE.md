@@ -168,6 +168,18 @@ When data is too slow to fetch on each request (13F parsing, scoring hundreds of
 - **Ticker defaults:** `AAPL` for stock pages, `VOO` for `/etf`.
 - The SEC ticker list (`SECService`) is downloaded from sec.gov when the service is constructed. Reuse an existing instance where you can instead of creating new ones.
 
+## Code review checklist
+
+Every pull request into `master` (from a branch in this repo, not a fork) gets an automated advisory review from Claude Code — see `.github/workflows/claude-code-review.yml`. It checks the diff against this list, which is also what a human or an interactive Claude Code review should check:
+
+- **Security:** no credentials, emails, or connection strings in code. New FastAPI routers are registered with `dependencies=protected` in `app/api/__init__.py`, unless they're meant to be public like `/health`. New Next.js route handlers under `/api` call `auth()` themselves. `TOKEN_KEY_CONTEXT` stays identical between `api/app/auth.py` and `src/app/session-token/route.ts`.
+- **Backend:** no `async def` handler calling blocking code (yfinance, `requests`, `httpx.Client`, pymongo) — use `def` so FastAPI runs it in its threadpool. New service data passes through `_sanitize_data()` before it's returned. Mongo access goes through `db.get_db()`, not a new `MongoClient`. New AI endpoints return `{"analysis": ...}`.
+- **Frontend:** backend calls go only through `apiFetch` in `lib/api.ts` — never a hard-coded host or a bare `fetch` to the backend from a component. New pages follow the `Suspense` + `DashboardLayout` pattern and get an entry in `dashboard-layout.tsx`'s `navItems`. Avoid adding new `any` types where a real interface is easy.
+- **Correctness:** logic errors, missing null/empty checks, off-by-one or wrong-sign bugs, and unhandled promise rejections.
+- **Consistency with docs:** if the change adds or renames an environment variable, a route, or a data source, `README.md` / `.env.example` / this file should be updated in the same PR.
+
+This review is advisory only. It never approves, requests changes, or edits code — treat its comments the way you'd treat a colleague's, and use your own judgment on which to act on.
+
 ## Gotchas
 
 - **How API auth works.** `middleware.ts` protects pages only. The API is protected separately: `lib/api.ts` gets a 1-hour HS256 token from `/session-token` (issued only to the signed-in `ALLOWED_USER_EMAIL`) and sends it as `Authorization: Bearer`, and `api/app/auth.py` verifies it. Both sides derive the signing key from `AUTH_SECRET` using the context string `ai-analyst-api-token`; keep those in sync. A new router is protected automatically when you register it with `dependencies=protected` in `app/api/__init__.py`. Only `/health` is public. New Next.js route handlers under `/api` must call `auth()` themselves.
