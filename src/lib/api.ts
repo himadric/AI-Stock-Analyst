@@ -343,3 +343,50 @@ export async function removeFromWatchlist(ticker: string) {
     return res.json();
 }
 
+// Analyst agent (Path A — interactive chat only; see docs/ARCHITECTURE.md)
+export interface AgentChatMessage {
+    role: "user" | "assistant";
+    content: string;
+}
+
+export type AgentEvent =
+    | { type: "text"; text: string }
+    | { type: "tool_start"; tool: string; args: Record<string, unknown> }
+    | { type: "tool_end"; tool: string }
+    | { type: "watchlist_proposal"; ticker: string; reason: string }
+    | { type: "error"; message: string }
+    | { type: "done" };
+
+// Streams the agent's response as it's generated. Not a plain fetch: this
+// endpoint returns text/event-stream, and EventSource can't send the
+// Authorization header apiFetch attaches, so we parse the SSE stream by
+// hand over a normal fetch instead.
+export async function* streamAgentChat(messages: AgentChatMessage[]): AsyncGenerator<AgentEvent> {
+    const res = await apiFetch(`/agent/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages }),
+    });
+    if (!res.ok || !res.body) throw new Error("Failed to reach the analyst agent");
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        let sepIndex;
+        while ((sepIndex = buffer.indexOf("\n\n")) !== -1) {
+            const chunk = buffer.slice(0, sepIndex);
+            buffer = buffer.slice(sepIndex + 2);
+            const line = chunk.split("\n").find((l) => l.startsWith("data: "));
+            if (line) {
+                yield JSON.parse(line.slice(6)) as AgentEvent;
+            }
+        }
+    }
+}
+
