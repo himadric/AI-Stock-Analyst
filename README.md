@@ -10,7 +10,7 @@ AI-powered stock and ETF research dashboard.
 
 ## About
 
-AI Analyst puts fundamental data, market data and AI-written analysis for a stock or ETF on one dashboard. Search for a ticker to see its key metrics, quarterly financial statements, price charts with technical indicators, analyst forecasts and ownership. You can also run a Monte Carlo DCF valuation, or have Google Gemini summarize SEC filings, flag valuation and risk red flags, and read price charts and macro conditions.
+AI Analyst puts fundamental data, market data and AI-written analysis for a stock or ETF on one dashboard. Search for a ticker to see its key metrics, quarterly financial statements, price charts with technical indicators, analyst forecasts and ownership. You can also run a Monte Carlo DCF valuation, or have Google Gemini summarize SEC filings, flag valuation and risk red flags, and read price charts and macro conditions. The **Analyst** page adds a chat agent (Claude, with real tool access to this app's data) you can ask open-ended questions — it can suggest watchlist additions, but only ever adds one with your explicit confirmation.
 
 Beyond single stocks, the app tracks the wider market:
 
@@ -60,6 +60,7 @@ The app uses these services. All of them have a free tier.
 |---|---|---|---|
 | [MongoDB Atlas](https://www.mongodb.com/cloud/atlas/register) | Stores the watchlist, rankings, trackers and heatmap data | Yes | `MONGO_URI` |
 | [Google AI Studio](https://aistudio.google.com/apikey) | Gemini API key for all AI analysis features | Yes | `GEMINI_API_KEY` |
+| [Anthropic Console](https://console.anthropic.com/) | Claude API key for the `/analyst` chat agent | For `/analyst`; the rest of the app works without it | `ANTHROPIC_API_KEY` |
 | [Google Cloud Console](https://console.cloud.google.com/) | OAuth client for signing in with Google | Yes | `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET` |
 | [Financial Modeling Prep](https://site.financialmodelingprep.com/developer/docs) | US House and Senate trades | For the House, Senate and Congress trackers | `FMP_API_KEY` |
 | [YouTube Data API v3](https://console.cloud.google.com/apis/library/youtube.googleapis.com) | Adds YouTube reviews to brand sentiment | No. Brand sentiment uses news only without it | `YOUTUBE_API_KEY` |
@@ -81,6 +82,13 @@ You don't need to create a database or collections. The app creates the `ai_stoc
 2. Click **Create API key** and copy it.
 
 Keep this key private. Google automatically disables keys it finds published on GitHub.
+
+#### Anthropic API key
+
+1. Go to [console.anthropic.com](https://console.anthropic.com/) and sign in.
+2. Under **API Keys**, create a new key and copy it.
+
+This is billed separately from any Claude.ai subscription — the `/analyst` page calls the API directly, not through Claude.ai.
 
 #### Google sign-in (OAuth client)
 
@@ -150,6 +158,7 @@ Fill in **`api/.env`** (backend):
 | Setting | Value |
 |---|---|
 | `GEMINI_API_KEY` | Your Gemini API key |
+| `ANTHROPIC_API_KEY` | Your Anthropic API key (optional — only `/analyst` needs it; everything else works without it) |
 | `MONGO_URI` | Your MongoDB connection string (the same one) |
 | `SEC_USER_AGENT` | Your app name and email, for example `"AIAnalyst you@example.com"`. SEC.gov requires a contact email on every request |
 | `FMP_API_KEY` | Your Financial Modeling Prep key (optional) |

@@ -1,12 +1,12 @@
 # AI Analyst: Architecture
 
-This document describes how AI Analyst is built: the runtime topology, request and data flows, every module and endpoint, the MongoDB data model, the scheduled jobs, and the known technical debt. It reflects the code on the `ETF` branch as of 2026‑09. For day-to-day coding conventions, see [CLAUDE.md](../CLAUDE.md).
+This document describes how AI Analyst is built: the runtime topology, request and data flows, every module and endpoint, the MongoDB data model, the scheduled jobs, and the known technical debt. It reflects `master` as of 2026‑09. For day-to-day coding conventions, see [CLAUDE.md](../CLAUDE.md).
 
 ---
 
 ## 1. Overview
 
-AI Analyst is a personal equity research dashboard. Enter a ticker and you get company fundamentals, financial statements, price charts, analyst forecasts, ownership, a Monte Carlo DCF valuation, brand sentiment, and LLM-written analyses (filing summaries, valuation, risk, technicals, macro, ETF quality). It also has market-wide views: an S&P 500 relative-strength heatmap, a "Future Leader" leaderboard, government-contractor book-to-bill, congressional trading, and institutional 13F trackers.
+AI Analyst is a personal equity research dashboard. Enter a ticker and you get company fundamentals, financial statements, price charts, analyst forecasts, ownership, a Monte Carlo DCF valuation, brand sentiment, and LLM-written analyses (filing summaries, valuation, risk, technicals, macro, ETF quality). It also has market-wide views: an S&P 500 relative-strength heatmap, a "Future Leader" leaderboard, government-contractor book-to-bill, congressional trading, and institutional 13F trackers. A conversational analyst agent (`/analyst`) sits on top of all of this — a tool-calling Claude agent you can ask real questions of, which can propose (never silently make) watchlist changes.
 
 Only one person uses it. Google sign-in is restricted to one email address (`ALLOWED_USER_EMAIL`).
 
@@ -16,7 +16,7 @@ Only one person uses it. Google sign-in is restricted to one email address (`ALL
 | Auth | NextAuth (Auth.js) v5 beta, Google provider, JWT session cookie |
 | API | Python 3.12, FastAPI, Pydantic, uvicorn (local) |
 | Data libs | yfinance, pandas, numpy, BeautifulSoup/lxml, vaderSentiment, httpx/requests |
-| LLM | Google Gemini REST API (`gemini-3-flash-preview`, temperature 0.1) |
+| LLM | Google Gemini REST API (`gemini-3-flash-preview`, temperature 0.1) for one-shot analyses; Anthropic Claude (`claude-sonnet-5`, Messages API, tool use) for the `/analyst` chat agent |
 | Storage | MongoDB Atlas, database `ai_stock_analyst` |
 | Hosting | Vercel: Next.js plus a Python serverless function in one project |
 | Scheduling | GitHub Actions cron workflows |
@@ -172,6 +172,7 @@ export default Page  →  <Suspense fallback={spinner}>
 | Route | Purpose | `lib/api.ts` calls (→ FastAPI) | Main components |
 |---|---|---|---|
 | `/` | Overview: profile, key metrics with tooltips, SEC filings with AI summary, news with AI sentiment, AI valuation/risk, peers, Future Leader score, add to watchlist | `fetchCompanyInfo`, `fetchSECFilings`, `fetchCompanyNews`, `fetchFinancials`, `fetchPeerComparison`, `fetchHistoricalMetrics`, `fetchFutureLeaderScore`, `analyzeFiling`, `analyzeNews`, `analyzeValuation`, `analyzeRisk`, `addToWatchlist` | `financial-charts`, `peer-comparison`, `future-leader-score` |
+| `/analyst` | Conversational analyst agent — free-form Q&A over live data, with confirm-gated watchlist adds | `streamAgentChat` (SSE, not JSON) | `agent-chat` |
 | `/financials` | Quarterly income, balance sheet, cash flow, ratios | `fetchFinancials`, `fetchBalanceSheet`, `fetchCashFlow`, `fetchRatios` | `financial-table`, `financial-charts` |
 | `/chart` | Price chart with period/interval, SMA overlays, comparisons, AI technicals | `fetchStockHistory` (+ `analyzeChart`, `fetchQuotes` in children) | `stock-chart`, `chart-analysis`, `sector-list`, `indicator-list` |
 | `/simulation` | Monte Carlo DCF (WACC, growth override, bear case) | `runSimulation` | `dcf-histogram` |
@@ -274,6 +275,8 @@ All paths are prefixed with `/api`.
 | `GET /house/trades` | router → Mongo `house_tracker` | snapshot | `{trades, updated_at}` or `status:no_data` |
 | `GET /senate/trades` | router → Mongo `senate_tracker` | snapshot | same |
 | `GET /congress/trades?limit` | `CongressService` | live FMP `stable/senate-latest` and `house-latest` | |
+| **agent** | `agent.py` → `agent/loop.py` + `agent/tools.py` | Anthropic Claude | see §4.4 |
+| `POST /agent/chat {messages}` | `run_agent_turn` | tool-use loop over 26 tools wrapping the services above | `text/event-stream`, not JSON |
 
 ### 4.3 Services
 
@@ -281,11 +284,51 @@ All paths are prefixed with `/api`.
 |---|---|---|
 | `FinanceService` | `services/finance.py` (~1,700 lines) | Nearly all market data through yfinance: company/ETF info, quotes, history, statements, ratios, forecasts, ownership, macro, sectors, peers, style box, Future Leader score, rankings, USAspending book-to-bill. `_sanitize_data()` recursively converts NaN/Inf to `None` and numpy scalars to Python types. |
 | `AIService` | `services/ai.py` | One transport method, `generate_insight(prompt)` (sync `httpx.Client`, 30 s timeout, Gemini `generateContent`), plus one prompt-builder per analysis. On failure it returns error *strings* and never raises. |
-| `SECService` | `services/sec.py` | Downloads the SEC `company_tickers.json` **in `__init__`** to build the ticker→CIK map and search cache, adds popular ETFs, lists filings, and fetches and cleans filing text with BeautifulSoup. The User-Agent is hard-coded, as SEC requires. |
+| `SECService` | `services/sec.py` | Downloads the SEC `company_tickers.json` **in `__init__`** to build the ticker→CIK map and search cache, adds popular ETFs, lists filings, and fetches and cleans filing text with BeautifulSoup. The User-Agent comes from `SEC_USER_AGENT`, as SEC requires. |
 | `InstitutionService` | `services/institution_service.py` | 13F tracker for Vanguard (CIK 0000102909) and Munro (CIK 0001768744). It reads Mongo first. Otherwise it fetches the last two 13F‑HR filings, scrapes the index page for the info-table XML, parses holdings, merges on CUSIP, resolves issuer→ticker through the SEC title map, and ranks by value change. |
 | `SimulationService` | `services/simulation.py` | Monte Carlo DCF (numpy). |
 | `SentimentService` | `services/sentiment_service.py` | Brand-name resolution (manual map, then yfinance name with legal suffixes stripped), Yahoo news, YouTube (top 5 "<brand> Review" videos from the last 30 days plus 5 comments each), VADER scoring, lexicon emotions, keyword counts. |
 | `CongressService` | `services/congress_service.py` | Live FMP fetch of both chambers, normalised and sorted by disclosure date. |
+
+### 4.4 Conversational analyst agent
+
+`/analyst` is a tool-calling Claude agent, deliberately separate from `AIService`'s one-shot Gemini prompts (§4.3). It's **interactive only** — there is no scheduled/autonomous counterpart (a "Path B" of proactive digests was scoped and deliberately dropped; see the design decision log for that feature). Everything it can do, it does by fetching live data in response to a question, not from a cache.
+
+```mermaid
+sequenceDiagram
+    participant B as Browser (agent-chat.tsx)
+    participant L as lib/api.ts (streamAgentChat)
+    participant R as POST /api/agent/chat
+    participant A as agent/loop.py (Claude)
+    participant T as agent/tools.py
+    participant S as existing services
+
+    B->>L: full message history so far
+    L->>R: fetch + apiFetch's Bearer token
+    R->>A: run_agent_turn(messages)
+    loop up to 8 tool-call turns
+        A->>A: client.messages.stream(...)
+        A-->>R: text deltas (yielded live)
+        A->>T: dispatch(tool_name, args)
+        T->>S: call the existing service method
+        S-->>T: data (same as the REST endpoint returns)
+        T-->>A: JSON string, capped at 8,000 chars
+    end
+    R-->>L: SSE: data: {"type": "text"|"tool_start"|"tool_end"|"watchlist_proposal"|"error"|"done"}
+    L-->>B: parsed events, rendered as they arrive
+```
+
+**Tool registry (`agent/tools.py`):** 26 tools, one per existing service method (fundamentals, financials, history, ownership, forecasts, peers, Future Leader score, rankings, news, brand sentiment, Vanguard/Munro 13F, Congress trades, macro, sector performance, DCF simulation, SEC filings, watchlist read) plus one that isn't a data fetch at all: `propose_watchlist_add`. Large payloads (price history, trade lists, filing text, the DCF histogram) are trimmed in the tool wrapper before being handed to the model — not in the underlying service, which is untouched. See CLAUDE.md "Conversational analyst agent" for how to add one.
+
+**The gated watchlist write:** `propose_watchlist_add` never touches MongoDB. Its dispatch function just returns a "proposed, not added" acknowledgement to the model, and the loop separately emits a `watchlist_proposal` SSE event carrying the ticker and reason. `agent-chat.tsx` renders that as a Confirm/Dismiss card; clicking Confirm calls the **existing, already-authenticated** `addToWatchlist()` (`POST /api/watchlist`) — the same function the Watchlist page uses. The agent's Python code has no code path that can write to the watchlist on its own.
+
+**Wire format:** `text/event-stream`, one `data: {...}\n\n` JSON frame per event (`type` is one of `text`, `tool_start`, `tool_end`, `watchlist_proposal`, `error`, `done`). This is real SSE framing, but it's consumed by a hand-rolled reader over `fetch()` + `ReadableStream` (`streamAgentChat` in `lib/api.ts`), not the browser's native `EventSource` — `EventSource` can't send the `Authorization: Bearer` header this API requires.
+
+**Conversation state:** client-side only (React state in `agent-chat.tsx`). Each request sends the full visible text history; nothing is persisted server-side, and a page refresh loses it. Tool calls from earlier turns aren't replayed to the model on a new turn — only the resulting text is, since the wire format carries plain `{role, content: string}` pairs, not full Anthropic content blocks. A deliberate v1 simplification, not an oversight.
+
+**Model split:** Claude (`claude-sonnet-5`, direct `anthropic` SDK, tool use), not Gemini — the one-shot `AIService` prompts are unaffected and unchanged. Requires its own `ANTHROPIC_API_KEY` in `api/.env` / Vercel, separate from `GEMINI_API_KEY`.
+
+**Safety boundaries:** read-only except the gated watchlist proposal above; no trading, no brokerage integration, none planned. Capped at 8 tool-call turns and 2,048 output tokens per turn (`MAX_TOOL_TURNS`, `MAX_TOKENS` in `loop.py`) — both a UX bound (interactive requests need to finish quickly) and a cost bound (each turn is a billed Claude API call). Sits behind `require_auth` like every other router — no special-casing.
 
 ---
 
@@ -358,7 +401,7 @@ All workflows also support `workflow_dispatch`. The scripts add `api/` to `sys.p
 ## 8. Configuration and deployment
 
 - **Vercel project:** the Next.js build plus `api/index.py` as a Python function. `api/runtime.txt` is `python-3.12`, and `api/requirements.txt` is kept minimal because of the function size limit (a commit titled "Reduced serverless function size").
-- **Environment variables:** see the table in [CLAUDE.md](../CLAUDE.md#environment-variables). The frontend reads `.env.local`, the backend reads `api/.env` (loaded by `main.py`), and CI reads GitHub secrets.
+- **Environment variables:** see the table in [CLAUDE.md](../CLAUDE.md#environment-variables). The frontend reads `.env.local`, the backend reads `api/.env` (loaded by `main.py`), and CI reads GitHub secrets. `ANTHROPIC_API_KEY` (backend only) needs to be set on Vercel too, or `/analyst` fails with a graceful in-chat error rather than working.
 - **Local development:** run `uvicorn main:app --reload --port 8000` from `api/` and `npm run dev` from the root. The Python virtualenv is `.venv/` at the repo root.
 - **Branching:** feature branches (`scalping`, `ETF`) are merged by PR into `master`, with Conventional Commit messages.
 
@@ -370,11 +413,11 @@ Ordered roughly by priority.
 
 | # | Area | Issue | Suggested direction |
 |---|---|---|---|
-| 1 | **Security** | `api/.env.example` is committed with what look like **real credentials** (Gemini API key, Pinecone key, a Supabase Postgres URL with password). `yf_keys.txt` is also committed. | Rotate those keys now, replace the values with placeholders, and consider purging them from git history. |
+| 1 | ~~Security~~ | ✅ **Fixed.** `api/.env.example` holds placeholders only now; the real values that were briefly committed should still be treated as burned (rotate them if that hasn't happened). | — |
 | 2 | ~~Security~~ | ✅ **Fixed.** FastAPI endpoints now require a session token (§2.3). | — |
 | 3 | ~~Bug~~ | ✅ **Fixed.** `etf-ai-analysis.tsx` now uses `analyzeEtf()` from `lib/api.ts` instead of `localhost:8000`. | — |
 | 4 | Performance | Many `async def` handlers (in `finance.py`, `ai.py`, `watchlist.py`, `simulation.py`) call blocking yfinance, httpx, and pymongo, which blocks the event loop. | Change them to `def` so FastAPI runs them in its threadpool. |
-| 5 | Performance | `SECService()` downloads `company_tickers.json` in its constructor. It is created in `sec.py`, `ai.py`, and inside each `InstitutionService` (`institution.py`, `munro.py`), so a cold start makes about 4 SEC downloads. | Use a module-level shared instance or `functools.cache`. |
+| 5 | Performance | `SECService()` downloads `company_tickers.json` in its constructor. It is created in `sec.py`, `ai.py`, `agent/tools.py`, and inside each `InstitutionService` (`institution.py`, `munro.py`), so a cold start makes about 5 SEC downloads. | Use a module-level shared instance or `functools.cache`. |
 | 6 | Consistency | `house.py`, `senate.py`, and `InstitutionService._get_from_db` create a new `MongoClient` per request (and the first two skip `certifi`). | Use `app.db.db.get_db()`. |
 | 7 | API shape | AI responses are inconsistent: `{summary}`, `{analysis}`, and a bare string for `/analyze_chart`. | Standardise on `{analysis}`. |
 | 8 | Data quality | `get_economic_data()` returns hard-coded 2024 GDP/CPI/unemployment figures. | Switch to the FRED API. |
@@ -384,3 +427,5 @@ Ordered roughly by priority.
 | 12 | CI | Workflow Python versions vary (3.9, 3.11, 3.13), while the runtime is 3.12. Some workflows install ad-hoc dependency lists instead of `requirements.txt`. `update_munro_data.py` has no workflow. | Standardise on 3.12 plus `requirements.txt`, and add a Munro workflow. |
 | 13 | Ops | NextAuth has `debug: true`. Logging uses `print`. Gemini is called with the API key in the query string. The model name is hard-coded. | Make debug depend on the environment, use `logging`, send the key in the `x-goog-api-key` header, and move the model to an env var. |
 | 14 | Testing | There are no automated tests on either side. | Start with pytest for the pure functions (`_sanitize_data`, scoring, DCF with mocked yfinance) and FastAPI `TestClient` smoke tests. |
+| 15 | Unverified | SSE streaming from `/api/agent/chat` through Vercel's rewrite to the Python function has only been tested locally (direct `uvicorn`, no rewrite in between). It may buffer or behave differently in production. | Confirm on a real deploy; if it buffers, the 8-turn/15-minute-class bound in `loop.py` still caps the damage, but the UX would degrade from "live" to "long pause then dump." |
+| 16 | Scope | The agent's tool registry (§4.4) wraps 26 of `FinanceService`'s ~30 methods — a few (ETF details, govt backlog/rankings, raw sector/factor allocations, economic data) aren't exposed yet. Conversation history is also client-side only, so tool-call context doesn't survive a page refresh. | Both are deliberate v1 scope cuts, not bugs — extend via the pattern in CLAUDE.md "Conversational analyst agent" when a real question needs one of the missing tools. |

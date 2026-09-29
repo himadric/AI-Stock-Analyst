@@ -49,6 +49,7 @@ There is no automated test suite. Check your changes by running both servers and
 | `api/.env` | `YOUTUBE_API_KEY` | Brand sentiment (optional; if it's missing, YouTube is skipped) |
 | `api/.env` | `SEC_USER_AGENT` | `"AppName you@example.com"`, which SEC.gov requires on every EDGAR request |
 | `api/.env` | `AUTH_SECRET`, `ALLOWED_USER_EMAIL` | **Same values as `.env.local`.** Used to verify API session tokens |
+| `api/.env` | `ANTHROPIC_API_KEY` | The `/analyst` chat agent (`POST /api/agent/chat`). Separate from `GEMINI_API_KEY` — see "Conversational analyst agent" below |
 
 Templates live in `.env.example` (frontend) and `api/.env.example` (backend). Never commit real values: the example files hold placeholders only, and credentials, emails and connection strings are always read from the environment and never hard-coded (not even as `os.getenv` defaults). CI jobs get their values from GitHub Secrets.
 
@@ -73,6 +74,8 @@ api/
   app/services/<domain>.py    business logic / external API calls
   app/db.py                   shared MongoClient singleton (`db.get_db()`)
   app/auth.py                 `require_auth` dependency: verifies the API token on every router but /health
+  app/agent/tools.py           analyst-agent tool registry (wraps existing services, doesn't fetch data itself)
+  app/agent/loop.py            the Claude tool-use loop behind POST /api/agent/chat
   app/data/*.json             static data (S&P index constituents, UEI map)
   scripts/update_*.py         batch jobs that write Mongo snapshots
   utils/                      more batch jobs + one-off tools
@@ -160,6 +163,15 @@ When data is too slow to fetch on each request (13F parsing, scoring hundreds of
 2. Add `.github/workflows/update_<name>.yml` with a `schedule` cron plus `workflow_dispatch`, passing `secrets.MONGO_URI`.
 3. The API endpoint reads the snapshot, and if it's missing returns an empty result or falls back to a live fetch (see `InstitutionService._get_institution_trades`).
 
+### 7. Conversational analyst agent (`/analyst`)
+
+This is a tool-calling Claude agent, not a template-filling Gemini prompt like `AIService` — see docs/ARCHITECTURE.md "Conversational analyst agent" for the full design. To add a tool:
+
+1. Write a small dispatch function in `api/app/agent/tools.py` that calls an **existing** service method — don't write new data-fetching logic here, just wrap it. If the payload can be large (a long list, a big history, raw filing text), trim it before returning (see the existing wrappers for the pattern).
+2. Add its schema to the `TOOLS` list (Anthropic tool-use format: `name`, `description`, `input_schema` as JSON Schema) and its dispatch function to `TOOL_DISPATCH`. The `description` matters a lot for tool selection quality — say what it's for and when to prefer it over similar tools.
+3. That's it — `loop.py` and the router don't change. Every tool result is JSON-serialized and capped at 8,000 characters before it goes back to the model.
+4. The one write-capable tool, `propose_watchlist_add`, is intentionally inert — it never touches the database. It only triggers a `watchlist_proposal` SSE event that the frontend renders as a confirm/dismiss card; confirming calls the existing `POST /api/watchlist` endpoint. Don't add a tool that writes directly; keep that confirmation step for anything mutating.
+
 ## Conventions
 
 - **Python:** snake_case, service classes named `<Domain>Service`, docstrings on public methods, `print()` for logging (no logging framework yet). Wrap external calls in `try/except` and return a safe empty value.
@@ -189,3 +201,7 @@ This review is advisory only. It never approves, requests changes, or edits code
 - The Vercel Python function has a size limit. Don't add heavy dependencies (scipy, torch, etc.) to `api/requirements.txt`.
 - The Gemini model name is hard-coded in `AIService.__init__` (`gemini-3-flash-preview`).
 - `get_economic_data()` (GDP/CPI/unemployment on `/macro`) returns hard-coded 2024 values, not live data.
+- **Two AI providers, deliberately.** `AIService` (Gemini, raw REST, no tool use) powers every one-shot analysis button. `api/app/agent/loop.py` (Claude, via the `anthropic` SDK, tool use) powers `/analyst` only. Don't mix them — a new one-shot analysis is Gemini via `AIService`; a new tool the agent can call is Claude via `agent/tools.py`.
+- **`/api/agent/chat` streams SSE over a plain `fetch`, not the browser's `EventSource`.** `EventSource` can't send the `Authorization` header `apiFetch` needs, so `streamAgentChat` in `lib/api.ts` reads `res.body` itself and parses `data: {...}\n\n` frames by hand. Keep that in mind if you touch the wire format on either side — the frontend's parser and the backend's `f"data: {json.dumps(event)}\n\n"` framing have to match.
+- The analyst agent's conversation history is **client-side only** (React state in `agent-chat.tsx`) — nothing is persisted to Mongo, and a refresh loses it. This was a deliberate v1 simplification, not an oversight.
+- SSE streaming through Vercel's Python function + rewrite hasn't been verified in production, only locally. If `/analyst` hangs or buffers on Vercel instead of streaming, this is the first thing to check.
