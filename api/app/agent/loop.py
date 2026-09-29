@@ -11,7 +11,7 @@ tool-use API is the better fit for it.
 import os
 from app.agent.tools import TOOLS, dispatch
 
-MODEL = "claude-sonnet-5"
+MODEL = "claude-sonnet-5-5"
 MAX_TOOL_TURNS = 8
 MAX_TOKENS = 2048
 
