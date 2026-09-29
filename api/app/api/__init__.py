@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends
-from app.api import health, finance, sec, ai, sentiment, institution, congress, house, senate, simulation, watchlist, munro
+from app.api import health, finance, sec, ai, sentiment, institution, congress, house, senate, simulation, watchlist, munro, agent
 from app.auth import require_auth
 
 router = APIRouter()
@@ -19,3 +19,4 @@ router.include_router(senate.router, prefix="/senate", tags=["senate"], dependen
 router.include_router(simulation.router, prefix="/simulation", tags=["simulation"], dependencies=protected)
 router.include_router(watchlist.router, prefix="/watchlist", tags=["watchlist"], dependencies=protected)
 router.include_router(munro.router, prefix="/munro", tags=["munro"], dependencies=protected)
+router.include_router(agent.router, prefix="/agent", tags=["agent"], dependencies=protected)

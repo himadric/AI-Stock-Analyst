@@ -10,6 +10,7 @@ uvicorn
 pymongo
 dnspython
 vaderSentiment
+anthropic
 
 lxml
 

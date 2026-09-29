@@ -1,6 +1,6 @@
 "use client";
 
-import { BarChart3, FileText, Globe, Home, LayoutDashboard, Search, TrendingUp, Target, Users, Menu, Trophy, Shield, Landmark, Building2 } from "lucide-react";
+import { BarChart3, Bot, FileText, Globe, Home, LayoutDashboard, Search, TrendingUp, Target, Users, Menu, Trophy, Shield, Landmark, Building2 } from "lucide-react";
 import { useState, useEffect, ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
@@ -52,6 +52,7 @@ export default function DashboardLayout({
 
   const navItems = [
     { name: "Overview", href: "/", icon: LayoutDashboard },
+    { name: "Analyst", href: "/analyst", icon: Bot },
     { name: "Financials", href: "/financials", icon: BarChart3 },
     { name: "Chart", href: "/chart", icon: TrendingUp },
     { name: "Simulation", href: "/simulation", icon: TrendingUp },
@@ -90,8 +91,11 @@ export default function DashboardLayout({
           //           If we are NOT on ETF page, maybe default to "VOO" or just /etf (which defaults to VOO)?
           
           let linkHref = `${item.href}?ticker=${sidebarTicker}`;
-          
-          if (item.href === "/etf") {
+
+          if (item.href === "/analyst") {
+              // Ticker-agnostic chat page - no ?ticker= needed
+              linkHref = item.href;
+          } else if (item.href === "/etf") {
               // If we are navigating TO the ETF page
               if (pathname.startsWith("/etf") && currentTicker) {
                   linkHref = `${item.href}?ticker=${currentTicker}`; // Keep current ETF while clicking ETF link
