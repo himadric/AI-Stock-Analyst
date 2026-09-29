@@ -14,6 +14,7 @@ POST /api/watchlist endpoint. The agent loop has no code path that can
 write to the watchlist on its own.
 """
 import json
+from urllib.parse import urlparse
 from app.services.finance import FinanceService
 from app.services.sec import SECService
 from app.services.sentiment_service import SentimentService
@@ -137,7 +138,16 @@ def _get_filings(ticker: str):
     return _cap_list(sec_service.get_filings(ticker), 10, "filings")
 
 
+_ALLOWED_FILING_HOSTS = {"sec.gov", "www.sec.gov", "data.sec.gov"}
+
+
 def _get_filing_text(url: str):
+    # Restrict to sec.gov: `url` is effectively model-chosen (from filing/news
+    # content it has read), so this needs a real allow-list, not just trust in
+    # the tool description, to stay closed against indirect prompt injection.
+    host = urlparse(url).netloc.lower()
+    if host not in _ALLOWED_FILING_HOSTS:
+        return {"error": "get_filing_text only fetches sec.gov URLs (use a URL from get_filings)."}
     text = sec_service.get_filing_text(url)
     if not text:
         return {"error": "Could not fetch that filing"}
@@ -363,5 +373,15 @@ def dispatch(name: str, arguments: dict):
         return {"error": f"Bad arguments for {name}: {e}"}
     except Exception as e:
         return {"error": f"{name} failed: {e}"}
-    # Anthropic tool_result content must be a string.
-    return json.dumps(result, default=str)[:8000]
+    # Anthropic tool_result content must be a string. Slicing raw JSON text
+    # can cut mid-structure, handing the model malformed data with no signal
+    # it's incomplete - wrap it instead of silently truncating.
+    serialized = json.dumps(result, default=str)
+    if len(serialized) > 8000:
+        return json.dumps({
+            "truncated": True,
+            "note": f"{name}'s result was too large ({len(serialized)} chars) and has been cut short. "
+                    "Treat partial_json as incomplete - ask a narrower question, a shorter period, or a smaller limit instead.",
+            "partial_json": serialized[:7500],
+        })
+    return serialized

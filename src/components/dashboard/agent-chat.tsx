@@ -79,11 +79,13 @@ export function AgentChat() {
                 }
             }
         } catch (e) {
+            const errorText = `⚠️ ${e instanceof Error ? e.message : "Something went wrong reaching the analyst agent."}`;
             setMessages((prev) => {
                 const next = [...prev];
+                const prior = next[next.length - 1]?.content || "";
                 next[next.length - 1] = {
                     role: "assistant",
-                    content: `⚠️ ${e instanceof Error ? e.message : "Something went wrong reaching the analyst agent."}`,
+                    content: prior ? `${prior}\n\n${errorText}` : errorText,
                 };
                 return next;
             });
