@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import { StockAnalystAssistant } from "@/components/dashboard/stock-analyst-assistant";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -29,6 +30,7 @@ export default function RootLayout({
         suppressHydrationWarning
       >
         {children}
+        <StockAnalystAssistant />
       </body>
     </html>
   );
