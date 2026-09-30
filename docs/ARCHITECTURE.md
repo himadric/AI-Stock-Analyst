@@ -6,7 +6,7 @@ This document describes how AI Analyst is built: the runtime topology, request a
 
 ## 1. Overview
 
-AI Analyst is a personal equity research dashboard. Enter a ticker and you get company fundamentals, financial statements, price charts, analyst forecasts, ownership, a Monte Carlo DCF valuation, brand sentiment, and LLM-written analyses (filing summaries, valuation, risk, technicals, macro, ETF quality). It also has market-wide views: an S&P 500 relative-strength heatmap, a "Future Leader" leaderboard, government-contractor book-to-bill, congressional trading, and institutional 13F trackers. A conversational analyst agent (`/analyst`) sits on top of all of this — a tool-calling Claude agent you can ask real questions of, which can propose (never silently make) watchlist changes.
+AI Analyst is a personal equity research dashboard. Enter a ticker and you get company fundamentals, financial statements, price charts, analyst forecasts, ownership, a Monte Carlo DCF valuation, brand sentiment, and LLM-written analyses (filing summaries, valuation, risk, technicals, macro, ETF quality). It also has market-wide views: an S&P 500 relative-strength heatmap, a "Future Leader" leaderboard, government-contractor book-to-bill, congressional trading, and institutional 13F trackers. A conversational analyst agent sits on top of all of this — a floating chat widget (bottom-right corner, on every page) backed by a tool-calling Claude agent you can ask real questions of. It shows its work live (which tools it's calling) and collapses that trace once it answers; it can propose, but never silently make, watchlist changes.
 
 Only one person uses it. Google sign-in is restricted to one email address (`ALLOWED_USER_EMAIL`).
 
@@ -16,7 +16,7 @@ Only one person uses it. Google sign-in is restricted to one email address (`ALL
 | Auth | NextAuth (Auth.js) v5 beta, Google provider, JWT session cookie |
 | API | Python 3.12, FastAPI, Pydantic, uvicorn (local) |
 | Data libs | yfinance, pandas, numpy, BeautifulSoup/lxml, vaderSentiment, httpx/requests |
-| LLM | Google Gemini REST API (`gemini-3-flash-preview`, temperature 0.1) for one-shot analyses; Anthropic Claude (`claude-sonnet-5`, Messages API, tool use) for the `/analyst` chat agent |
+| LLM | Google Gemini REST API (`gemini-3-flash-preview`, temperature 0.1) for one-shot analyses; Anthropic Claude (`claude-sonnet-5-5`, Messages API, tool use) for the chat widget |
 | Storage | MongoDB Atlas, database `ai_stock_analyst` |
 | Hosting | Vercel: Next.js plus a Python serverless function in one project |
 | Scheduling | GitHub Actions cron workflows |
@@ -166,13 +166,13 @@ export default Page  →  <Suspense fallback={spinner}>
 - **The ticker lives in the URL** (`?ticker=`). The header `TickerSearch` does a debounced (300 ms) call to `/api/sec/search` and then `router.push(`${redirectBase}?ticker=X`)`.
 - **Sidebar ticker memory:** `DashboardLayout` saves the last *stock* ticker to `localStorage["lastStockTicker"]` and appends it to every nav link. The ETF page is excluded, so browsing ETFs doesn't replace the remembered stock.
 - **State:** local `useState`/`useEffect` only. There is no global store, React Query, or SWR. Loading, empty, and data states are rendered by hand. AI results are held in `analysisResult` state and shown with `react-markdown`.
+- **The one exception to "every page is its own tree":** `StockAnalystAssistant` (the chat widget, §4.4) is mounted once in `src/app/layout.tsx` — the actual Next.js root layout, which persists across client-side navigation — not inside `DashboardLayout`, which each page recreates. Inside it, the popup panel is always rendered and toggled with a CSS class (`open ? "flex" : "hidden"`), never `{open && <Panel/>}` — conditionally rendering it would unmount `AgentChat` (and wipe its conversation state) on every close, which is exactly the bug an early version of this shipped with.
 
 ### 3.3 Pages → endpoints → components
 
 | Route | Purpose | `lib/api.ts` calls (→ FastAPI) | Main components |
 |---|---|---|---|
 | `/` | Overview: profile, key metrics with tooltips, SEC filings with AI summary, news with AI sentiment, AI valuation/risk, peers, Future Leader score, add to watchlist | `fetchCompanyInfo`, `fetchSECFilings`, `fetchCompanyNews`, `fetchFinancials`, `fetchPeerComparison`, `fetchHistoricalMetrics`, `fetchFutureLeaderScore`, `analyzeFiling`, `analyzeNews`, `analyzeValuation`, `analyzeRisk`, `addToWatchlist` | `financial-charts`, `peer-comparison`, `future-leader-score` |
-| `/analyst` | Conversational analyst agent — free-form Q&A over live data, with confirm-gated watchlist adds | `streamAgentChat` (SSE, not JSON) | `agent-chat` |
 | `/financials` | Quarterly income, balance sheet, cash flow, ratios | `fetchFinancials`, `fetchBalanceSheet`, `fetchCashFlow`, `fetchRatios` | `financial-table`, `financial-charts` |
 | `/chart` | Price chart with period/interval, SMA overlays, comparisons, AI technicals | `fetchStockHistory` (+ `analyzeChart`, `fetchQuotes` in children) | `stock-chart`, `chart-analysis`, `sector-list`, `indicator-list` |
 | `/simulation` | Monte Carlo DCF (WACC, growth override, bear case) | `runSimulation` | `dcf-histogram` |
@@ -292,7 +292,11 @@ All paths are prefixed with `/api`.
 
 ### 4.4 Conversational analyst agent
 
-`/analyst` is a tool-calling Claude agent, deliberately separate from `AIService`'s one-shot Gemini prompts (§4.3). It's **interactive only** — there is no scheduled/autonomous counterpart (a "Path B" of proactive digests was scoped and deliberately dropped; see the design decision log for that feature). Everything it can do, it does by fetching live data in response to a question, not from a cache.
+A tool-calling Claude agent, deliberately separate from `AIService`'s one-shot Gemini prompts (§4.3). It's **interactive only** — there is no scheduled/autonomous counterpart (a "Path B" of proactive digests was scoped and deliberately dropped; see the design decision log for that feature). Everything it can do, it does by fetching live data in response to a question, not from a cache.
+
+**UI: a floating widget, not a page.** `StockAnalystAssistant` (`stock-analyst-assistant.tsx`) renders a chat-bubble button fixed to the bottom-right corner on every page, and a popup panel that toggles open. It's mounted once in the true root layout (`src/app/layout.tsx`), not inside `DashboardLayout`, specifically so the conversation survives client-side navigation between pages — see §3.2 for why that placement matters and the exact bug it avoids. Hidden on `/login` (`usePathname() === "/login"` check), since there's no session to chat with yet there.
+
+**Live, collapsible tool-call trace.** While a turn is in progress, `agent-chat.tsx` shows each tool call as it starts and completes (spinner → checkmark), directly under the message — visible "thinking," similar to Claude Code's own CLI output. Once the turn finishes, that trace collapses into a "Used N tools" toggle; the final answer text is always shown in full below it, never collapsed. Each `DisplayMessage` carries its own `toolCalls` array and `streaming`/`traceExpanded` flags client-side — none of this is sent to or read from the backend, which only ever sees plain `{role, content}` pairs (see "Conversation state" below).
 
 ```mermaid
 sequenceDiagram
@@ -326,7 +330,7 @@ sequenceDiagram
 
 **Conversation state:** client-side only (React state in `agent-chat.tsx`). Each request sends the full visible text history; nothing is persisted server-side, and a page refresh loses it. Tool calls from earlier turns aren't replayed to the model on a new turn — only the resulting text is, since the wire format carries plain `{role, content: string}` pairs, not full Anthropic content blocks. A deliberate v1 simplification, not an oversight.
 
-**Model split:** Claude (`claude-sonnet-5`, direct `anthropic` SDK, tool use), not Gemini — the one-shot `AIService` prompts are unaffected and unchanged. Requires its own `ANTHROPIC_API_KEY` in `api/.env` / Vercel, separate from `GEMINI_API_KEY`.
+**Model split:** Claude (`claude-sonnet-5-5`, direct `anthropic` SDK, tool use), not Gemini — the one-shot `AIService` prompts are unaffected and unchanged. Requires its own `ANTHROPIC_API_KEY` in `api/.env` / Vercel, separate from `GEMINI_API_KEY`.
 
 **Safety boundaries:** read-only except the gated watchlist proposal above; no trading, no brokerage integration, none planned. Capped at 8 tool-call turns and 2,048 output tokens per turn (`MAX_TOOL_TURNS`, `MAX_TOKENS` in `loop.py`) — both a UX bound (interactive requests need to finish quickly) and a cost bound (each turn is a billed Claude API call). Sits behind `require_auth` like every other router — no special-casing.
 
@@ -401,7 +405,7 @@ All workflows also support `workflow_dispatch`. The scripts add `api/` to `sys.p
 ## 8. Configuration and deployment
 
 - **Vercel project:** the Next.js build plus `api/index.py` as a Python function. `api/runtime.txt` is `python-3.12`, and `api/requirements.txt` is kept minimal because of the function size limit (a commit titled "Reduced serverless function size").
-- **Environment variables:** see the table in [CLAUDE.md](../CLAUDE.md#environment-variables). The frontend reads `.env.local`, the backend reads `api/.env` (loaded by `main.py`), and CI reads GitHub secrets. `ANTHROPIC_API_KEY` (backend only) needs to be set on Vercel too, or `/analyst` fails with a graceful in-chat error rather than working.
+- **Environment variables:** see the table in [CLAUDE.md](../CLAUDE.md#environment-variables). The frontend reads `.env.local`, the backend reads `api/.env` (loaded by `main.py`), and CI reads GitHub secrets. `ANTHROPIC_API_KEY` (backend only) needs to be set on Vercel too, or the chat widget fails with a graceful in-chat error rather than working.
 - **Local development:** run `uvicorn main:app --reload --port 8000` from `api/` and `npm run dev` from the root. The Python virtualenv is `.venv/` at the repo root.
 - **Branching:** feature branches (`scalping`, `ETF`) are merged by PR into `master`, with Conventional Commit messages.
 
