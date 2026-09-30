@@ -39,7 +39,9 @@ const SUGGESTIONS = [
 // "company info (NVDA)" instead of "get_company_info" + a raw args object.
 function describeTool(tool: string, args: Record<string, unknown>) {
     const label = tool.replace(/^get_/, "").replace(/^propose_/, "propose ").replace(/_/g, " ");
-    const arg = (args?.ticker as string) || (args?.query as string) || (args?.category as string) || (args?.url as string) || "";
+    const tickers = Array.isArray(args?.tickers) ? (args.tickers as string[]).join(", ") : "";
+    const arg =
+        (args?.ticker as string) || tickers || (args?.query as string) || (args?.category as string) || (args?.url as string) || "";
     return arg ? `${label} (${arg})` : label;
 }
 
