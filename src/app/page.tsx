@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ArrowUpRight, FileText, Loader2, Sparkles, AlertTriangle, Plus, Check, UploadCloud } from "lucide-react";
-import { fetchCompanyInfo, fetchSECFilings, analyzeFiling, ingestFiling, fetchCompanyNews, analyzeNews, fetchFinancials, analyzeValuation, analyzeRisk, fetchPeerComparison, fetchHistoricalMetrics, fetchFutureLeaderScore, addToWatchlist } from "@/lib/api";
+import { fetchCompanyInfo, fetchSECFilings, analyzeFiling, ingestFiling, fetchFilingStatus, fetchCompanyNews, analyzeNews, fetchFinancials, analyzeValuation, analyzeRisk, fetchPeerComparison, fetchHistoricalMetrics, fetchFutureLeaderScore, addToWatchlist } from "@/lib/api";
 import { FinancialCharts } from "@/components/dashboard/financial-charts";
 import { PeerComparison } from "@/components/dashboard/peer-comparison";
 import { FutureLeaderScore } from "@/components/dashboard/future-leader-score";
@@ -46,7 +46,7 @@ function DashboardContent() {
     const [addingWatchlist, setAddingWatchlist] = useState(false);
     const [added, setAdded] = useState(false);
     const [ingestingLink, setIngestingLink] = useState<string | null>(null);
-    const [ingestedLink, setIngestedLink] = useState<string | null>(null);
+    const [indexedAccessions, setIndexedAccessions] = useState<Set<string>>(new Set());
 
     useEffect(() => {
         setAnalysisResult(null); 
@@ -69,6 +69,16 @@ function DashboardContent() {
             ]);
             setCompanyInfo(info);
             setFilings(secData);
+            setIndexedAccessions(new Set());
+            if (Array.isArray(secData) && secData.length > 0) {
+                // Fire-and-forget: don't block the rest of the page on this.
+                fetchFilingStatus(ticker, secData.map((f) => f.accessionNumber))
+                    .then((status) => {
+                        const indexed = Object.entries(status).filter(([, v]) => v).map(([acc]) => acc);
+                        setIndexedAccessions(new Set(indexed));
+                    })
+                    .catch(() => {});
+            }
             setNews(newsData);
             setFinancials(finData);
             setPeers(peerData);
@@ -99,8 +109,9 @@ function DashboardContent() {
         setIngestingLink(filing.link);
         try {
             await ingestFiling(ticker, filing);
-            setIngestedLink(filing.link);
-            setTimeout(() => setIngestedLink(null), 3000);
+            // Optimistic update: mark it indexed now rather than re-fetching
+            // status, so the button goes straight to its permanent disabled state.
+            setIndexedAccessions((prev) => new Set(prev).add(filing.accessionNumber));
         } catch (e) {
             console.error(e);
         } finally {
@@ -654,13 +665,13 @@ function DashboardContent() {
                                                             <TooltipTrigger asChild>
                                                                 <Button
                                                                     size="sm"
-                                                                    variant={ingestedLink === filing.link ? "secondary" : "outline"}
+                                                                    variant={indexedAccessions.has(filing.accessionNumber) ? "secondary" : "outline"}
                                                                     onClick={() => handleIngestFiling(filing)}
-                                                                    disabled={ingestingLink !== null}
+                                                                    disabled={ingestingLink !== null || indexedAccessions.has(filing.accessionNumber)}
                                                                 >
                                                                     {ingestingLink === filing.link ? (
                                                                         <Loader2 className="h-4 w-4 animate-spin" />
-                                                                    ) : ingestedLink === filing.link ? (
+                                                                    ) : indexedAccessions.has(filing.accessionNumber) ? (
                                                                         <Check className="h-4 w-4" />
                                                                     ) : (
                                                                         <UploadCloud className="h-4 w-4" />
@@ -668,7 +679,9 @@ function DashboardContent() {
                                                                 </Button>
                                                             </TooltipTrigger>
                                                             <TooltipContent>
-                                                                Index this filing for the chat agent&apos;s search
+                                                                {indexedAccessions.has(filing.accessionNumber)
+                                                                    ? "Already indexed for the chat agent's search"
+                                                                    : "Index this filing for the chat agent's search"}
                                                             </TooltipContent>
                                                         </Tooltip>
                                                     </TooltipProvider>
