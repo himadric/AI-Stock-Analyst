@@ -680,8 +680,8 @@ function DashboardContent() {
                                                             </TooltipTrigger>
                                                             <TooltipContent>
                                                                 {indexedAccessions.has(filing.accessionNumber)
-                                                                    ? "Already indexed for the chat agent's search"
-                                                                    : "Index this filing for the chat agent's search"}
+                                                                    ? "Filing indexed for chat agent's RAG search"
+                                                                    : "Index this filing for chat agent's RAG search"}
                                                             </TooltipContent>
                                                         </Tooltip>
                                                     </TooltipProvider>
