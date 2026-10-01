@@ -88,6 +88,21 @@ export async function analyzeFiling(ticker: string, url: string) {
     return res.json();
 }
 
+// Indexes one filing into Pinecone for the chat agent's search_filings tool
+// (semantic search across filings). See docs/ARCHITECTURE.md "RAG over SEC filings".
+export async function ingestFiling(
+    ticker: string,
+    filing: { accessionNumber: string; form: string; filingDate: string; link: string }
+) {
+    const res = await apiFetch(`/agent/ingest_filing`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ticker, ...filing }),
+    });
+    if (!res.ok) throw new Error("Failed to ingest filing");
+    return res.json();
+}
+
 export async function searchTickers(query: string) {
     const res = await apiFetch(`/sec/search?query=${encodeURIComponent(query)}`);
     if (!res.ok) throw new Error("Failed to search tickers");
