@@ -16,6 +16,12 @@ AI-powered stock and ETF research dashboard.
 
 *Click the image to watch the chat assistant research a ticker and answer questions, live, on YouTube.*
 
+**RAG over SEC filings**
+
+[![Watch the RAG demo on YouTube](docs/media/rag-demo-thumbnail.png)](https://youtu.be/0DaXzz-paNE)
+
+*Click the image to watch semantic search across SEC filings in action — indexing a filing and the chat agent searching it — on YouTube.*
+
 ## About
 
 AI Analyst puts fundamental data, market data and AI-written analysis for a stock or ETF on one dashboard. Search for a ticker to see its key metrics, quarterly financial statements, price charts with technical indicators, analyst forecasts and ownership. You can also run a Monte Carlo DCF valuation, or have Google Gemini summarize SEC filings, flag valuation and risk red flags, and read price charts and macro conditions. A **Stock Analyst Assistant** — a chat bubble in the bottom-right corner of every page (Claude, with real tool access to this app's data) — answers open-ended questions, showing its work as it looks things up. It can search across a ticker's SEC filings semantically, not just read one you point it at, and can suggest watchlist additions, but only ever adds one with your explicit confirmation.
