@@ -21,6 +21,7 @@ from app.services.sentiment_service import SentimentService
 from app.services.institution_service import InstitutionService
 from app.services.congress_service import CongressService
 from app.services.simulation import SimulationService
+from app.services.filing_search_service import FilingSearchService
 from app.db import db
 
 finance_service = FinanceService()
@@ -29,6 +30,7 @@ sentiment_service = SentimentService()
 institution_service = InstitutionService()
 congress_service = CongressService()
 simulation_service = SimulationService()
+filing_search_service = FilingSearchService()
 
 
 def _cap_list(items, limit, label="items"):
@@ -155,6 +157,10 @@ def _get_filing_text(url: str):
     return {"text": text[:15000], "truncated": truncated}
 
 
+def _search_filings(ticker: str, query: str, limit: int = 5):
+    return filing_search_service.search_filings(ticker, query, limit=limit)
+
+
 def _get_watchlist():
     return list(db.get_db().watchlist.find({}, {"_id": 0}))
 
@@ -189,6 +195,7 @@ TOOL_DISPATCH = {
     "run_dcf_simulation": _run_dcf_simulation,
     "get_filings": _get_filings,
     "get_filing_text": _get_filing_text,
+    "search_filings": _search_filings,
     "get_watchlist": _get_watchlist,
     "propose_watchlist_add": _propose_watchlist_add,
 }
@@ -338,6 +345,25 @@ TOOLS = [
         "name": "get_filing_text",
         "description": "Fetches the text of one SEC filing by URL (from get_filings). Truncated to ~15,000 characters.",
         "input_schema": {"type": "object", "properties": {"url": {"type": "string"}}, "required": ["url"]},
+    },
+    {
+        "name": "search_filings",
+        "description": (
+            "Semantic search across a ticker's SEC filings for a topic or question, e.g. 'margin pressure "
+            "guidance' or 'risk factors about competition'. Use this instead of get_filing_text when you need "
+            "to find something across filings rather than read one you already have a URL for. If nothing has "
+            "been searched for this ticker yet, the most recent filings are fetched and indexed automatically "
+            "on first use, which takes longer than other tools."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "ticker": {"type": "string"},
+                "query": {"type": "string"},
+                "limit": {"type": "integer", "default": 5},
+            },
+            "required": ["ticker", "query"],
+        },
     },
     {
         "name": "get_watchlist",
