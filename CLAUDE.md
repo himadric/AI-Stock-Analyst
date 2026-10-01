@@ -50,7 +50,7 @@ There is no automated test suite. Check your changes by running both servers and
 | `api/.env` | `SEC_USER_AGENT` | `"AppName you@example.com"`, which SEC.gov requires on every EDGAR request |
 | `api/.env` | `AUTH_SECRET`, `ALLOWED_USER_EMAIL` | **Same values as `.env.local`.** Used to verify API session tokens |
 | `api/.env` | `ANTHROPIC_API_KEY` | The chat widget's agent (`POST /api/agent/chat`). Separate from `GEMINI_API_KEY` — see "Conversational analyst agent" below |
-| `api/.env` | `PINECONE_API_KEY` | RAG over SEC filings — in progress. Currently only `api/utils/create_pinecone_index.py` reads it; not yet wired into any tool |
+| `api/.env` | `PINECONE_API_KEY` | `FilingSearchService` — the agent's `search_filings` tool and the SEC Filings upload button. Run `api/utils/create_pinecone_index.py` once first |
 
 Templates live in `.env.example` (frontend) and `api/.env.example` (backend). Never commit real values: the example files hold placeholders only, and credentials, emails and connection strings are always read from the environment and never hard-coded (not even as `os.getenv` defaults). CI jobs get their values from GitHub Secrets.
 
@@ -79,6 +79,9 @@ api/
   app/auth.py                 `require_auth` dependency: verifies the API token on every router but /health
   app/agent/tools.py           analyst-agent tool registry (wraps existing services, doesn't fetch data itself)
   app/agent/loop.py            the Claude tool-use loop behind POST /api/agent/chat
+  app/services/filing_search_service.py   RAG over SEC filings (chunk, Pinecone upsert/search; see search_filings tool)
+  utils/create_pinecone_index.py          one-time setup: creates the "sec-filings" Pinecone index
+  utils/ingest_filings.py                 CLI to pre-populate a ticker's filings into Pinecone ahead of time
   app/data/*.json             static data (S&P index constituents, UEI map)
   scripts/update_*.py         batch jobs that write Mongo snapshots
   utils/                      more batch jobs + one-off tools
@@ -210,3 +213,6 @@ This review is advisory only. It never approves, requests changes, or edits code
 - SSE streaming through Vercel's Python function + rewrite hasn't been verified in production, only locally. If the chat widget hangs or buffers on Vercel instead of streaming, this is the first thing to check.
 - **The chat widget is mounted in `src/app/layout.tsx` (the true root layout), not in `DashboardLayout`.** Every page recreates its own `DashboardLayout` instance, so anything mounted there loses state on navigation; the root layout doesn't. Its popup panel is toggled with a CSS class (`open ? "flex" : "hidden"`), never `{open && <Panel/>}` — conditionally rendering it would unmount `AgentChat` (and its message state) on every close. Both of these were real bugs in an early version, not hypothetical.
 - `MODEL` in `api/app/agent/loop.py` is `"claude-sonnet-5-5"`. If Anthropic ships a new default Claude model, this needs a manual bump — nothing here reads it from an env var or resolves an alias.
+- **The installed `pinecone` SDK (v10) doesn't match Pinecone's own docs.** `upsert_records()` and `search()` are keyword-only (no positional args), and `search()` takes `top_k`/`inputs` as flat keyword arguments, not nested under a `query={"inputs": ..., "top_k": ...}` dict the way the docs show. Verified directly against the installed package, not assumed — check `inspect.signature()` again if you're touching `filing_search_service.py` and something that looks right by the docs throws a `PineconeValueError`.
+- `search_filings` ingests on demand: the **first** search for a ticker with nothing in Pinecone yet fetches and chunks its 2 most recent filings before it can answer, which is much slower than every other tool. Use the "upload" button on the Overview page's SEC Filings list, or `api/utils/ingest_filings.py TICKER`, to pre-populate a ticker and avoid that first-query latency.
+- Pinecone namespaces are per-ticker, and record `_id`s are `{ticker}-{accessionNumber}-{chunk_index}` — stable, so re-ingesting the same filing is a harmless no-op upsert, not a duplicate. Don't change this `_id` scheme without a migration; existing vectors won't be found or overwritten under a new scheme, just orphaned.

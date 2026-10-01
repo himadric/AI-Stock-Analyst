@@ -18,7 +18,7 @@ AI-powered stock and ETF research dashboard.
 
 ## About
 
-AI Analyst puts fundamental data, market data and AI-written analysis for a stock or ETF on one dashboard. Search for a ticker to see its key metrics, quarterly financial statements, price charts with technical indicators, analyst forecasts and ownership. You can also run a Monte Carlo DCF valuation, or have Google Gemini summarize SEC filings, flag valuation and risk red flags, and read price charts and macro conditions. A **Stock Analyst Assistant** — a chat bubble in the bottom-right corner of every page (Claude, with real tool access to this app's data) — answers open-ended questions, showing its work as it looks things up. It can suggest watchlist additions, but only ever adds one with your explicit confirmation.
+AI Analyst puts fundamental data, market data and AI-written analysis for a stock or ETF on one dashboard. Search for a ticker to see its key metrics, quarterly financial statements, price charts with technical indicators, analyst forecasts and ownership. You can also run a Monte Carlo DCF valuation, or have Google Gemini summarize SEC filings, flag valuation and risk red flags, and read price charts and macro conditions. A **Stock Analyst Assistant** — a chat bubble in the bottom-right corner of every page (Claude, with real tool access to this app's data) — answers open-ended questions, showing its work as it looks things up. It can search across a ticker's SEC filings semantically, not just read one you point it at, and can suggest watchlist additions, but only ever adds one with your explicit confirmation.
 
 Beyond single stocks, the app tracks the wider market:
 
@@ -69,7 +69,7 @@ The app uses these services. All of them have a free tier.
 | [MongoDB Atlas](https://www.mongodb.com/cloud/atlas/register) | Stores the watchlist, rankings, trackers and heatmap data | Yes | `MONGO_URI` |
 | [Google AI Studio](https://aistudio.google.com/apikey) | Gemini API key for all AI analysis features | Yes | `GEMINI_API_KEY` |
 | [Anthropic Console](https://console.anthropic.com/) | Claude API key for the Stock Analyst Assistant chat widget | For the chat widget; the rest of the app works without it | `ANTHROPIC_API_KEY` |
-| [Pinecone](https://app.pinecone.io/) | Vector index for semantic search over SEC filings (in progress — currently only used by `api/utils/create_pinecone_index.py`, not yet wired into the chat agent) | No — safe to skip until that feature lands | `PINECONE_API_KEY` |
+| [Pinecone](https://app.pinecone.io/) | Vector index powering the chat agent's `search_filings` tool — semantic search across a ticker's SEC filings | No — only `search_filings` and the SEC Filings upload button need it; the rest of the app works without it | `PINECONE_API_KEY` |
 | [Google Cloud Console](https://console.cloud.google.com/) | OAuth client for signing in with Google | Yes | `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET` |
 | [Financial Modeling Prep](https://site.financialmodelingprep.com/developer/docs) | US House and Senate trades | For the House, Senate and Congress trackers | `FMP_API_KEY` |
 | [YouTube Data API v3](https://console.cloud.google.com/apis/library/youtube.googleapis.com) | Adds YouTube reviews to brand sentiment | No. Brand sentiment uses news only without it | `YOUTUBE_API_KEY` |
@@ -168,7 +168,7 @@ Fill in **`api/.env`** (backend):
 |---|---|
 | `GEMINI_API_KEY` | Your Gemini API key |
 | `ANTHROPIC_API_KEY` | Your Anthropic API key (optional — only the chat widget needs it; everything else works without it) |
-| `PINECONE_API_KEY` | Your Pinecone API key (optional — only `api/utils/create_pinecone_index.py` uses it so far; this feature is still in progress) |
+| `PINECONE_API_KEY` | Your Pinecone API key (optional — powers the chat agent's `search_filings` tool; run `python api/utils/create_pinecone_index.py` once to create the index) |
 | `MONGO_URI` | Your MongoDB connection string (the same one) |
 | `SEC_USER_AGENT` | Your app name and email, for example `"AIAnalyst you@example.com"`. SEC.gov requires a contact email on every request |
 | `FMP_API_KEY` | Your Financial Modeling Prep key (optional) |
