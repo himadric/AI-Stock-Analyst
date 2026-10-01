@@ -6,8 +6,8 @@ import DashboardLayout from "@/components/layout/dashboard-layout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { ArrowUpRight, FileText, Loader2, Sparkles, AlertTriangle, Plus, Check } from "lucide-react";
-import { fetchCompanyInfo, fetchSECFilings, analyzeFiling, fetchCompanyNews, analyzeNews, fetchFinancials, analyzeValuation, analyzeRisk, fetchPeerComparison, fetchHistoricalMetrics, fetchFutureLeaderScore, addToWatchlist } from "@/lib/api";
+import { ArrowUpRight, FileText, Loader2, Sparkles, AlertTriangle, Plus, Check, UploadCloud } from "lucide-react";
+import { fetchCompanyInfo, fetchSECFilings, analyzeFiling, ingestFiling, fetchCompanyNews, analyzeNews, fetchFinancials, analyzeValuation, analyzeRisk, fetchPeerComparison, fetchHistoricalMetrics, fetchFutureLeaderScore, addToWatchlist } from "@/lib/api";
 import { FinancialCharts } from "@/components/dashboard/financial-charts";
 import { PeerComparison } from "@/components/dashboard/peer-comparison";
 import { FutureLeaderScore } from "@/components/dashboard/future-leader-score";
@@ -45,6 +45,8 @@ function DashboardContent() {
     const [analysisResult, setAnalysisResult] = useState<string | null>(null);
     const [addingWatchlist, setAddingWatchlist] = useState(false);
     const [added, setAdded] = useState(false);
+    const [ingestingLink, setIngestingLink] = useState<string | null>(null);
+    const [ingestedLink, setIngestedLink] = useState<string | null>(null);
 
     useEffect(() => {
         setAnalysisResult(null); 
@@ -90,6 +92,19 @@ function DashboardContent() {
             setAnalysisResult("Failed to generate analysis.");
         } finally {
             setAnalyzing(null);
+        }
+    }
+
+    async function handleIngestFiling(filing: { accessionNumber: string; form: string; filingDate: string; link: string }) {
+        setIngestingLink(filing.link);
+        try {
+            await ingestFiling(ticker, filing);
+            setIngestedLink(filing.link);
+            setTimeout(() => setIngestedLink(null), 3000);
+        } catch (e) {
+            console.error(e);
+        } finally {
+            setIngestingLink(null);
         }
     }
 
@@ -627,13 +642,36 @@ function DashboardContent() {
                                                     >
                                                         Open
                                                     </Button>
-                                                    <Button 
-                                                        size="sm" 
+                                                    <Button
+                                                        size="sm"
                                                         onClick={() => handleAnalyzeFiling(filing.link)}
                                                         disabled={analyzing !== null}
                                                     >
                                                         {analyzing === filing.link ? <Loader2 className="h-4 w-4 animate-spin"/> : <Sparkles className="h-4 w-4"/>}
                                                     </Button>
+                                                    <TooltipProvider>
+                                                        <Tooltip>
+                                                            <TooltipTrigger asChild>
+                                                                <Button
+                                                                    size="sm"
+                                                                    variant={ingestedLink === filing.link ? "secondary" : "outline"}
+                                                                    onClick={() => handleIngestFiling(filing)}
+                                                                    disabled={ingestingLink !== null}
+                                                                >
+                                                                    {ingestingLink === filing.link ? (
+                                                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                                                    ) : ingestedLink === filing.link ? (
+                                                                        <Check className="h-4 w-4" />
+                                                                    ) : (
+                                                                        <UploadCloud className="h-4 w-4" />
+                                                                    )}
+                                                                </Button>
+                                                            </TooltipTrigger>
+                                                            <TooltipContent>
+                                                                Index this filing for the chat agent&apos;s search
+                                                            </TooltipContent>
+                                                        </Tooltip>
+                                                    </TooltipProvider>
                                                 </div>
                                             </div>
                                         ))}

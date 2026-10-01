@@ -276,7 +276,8 @@ All paths are prefixed with `/api`.
 | `GET /senate/trades` | router → Mongo `senate_tracker` | snapshot | same |
 | `GET /congress/trades?limit` | `CongressService` | live FMP `stable/senate-latest` and `house-latest` | |
 | **agent** | `agent.py` → `agent/loop.py` + `agent/tools.py` | Anthropic Claude | see §4.4 |
-| `POST /agent/chat {messages}` | `run_agent_turn` | tool-use loop over 26 tools wrapping the services above | `text/event-stream`, not JSON |
+| `POST /agent/chat {messages}` | `run_agent_turn` | tool-use loop over 27 tools wrapping the services above | `text/event-stream`, not JSON |
+| `POST /agent/ingest_filing {ticker,accessionNumber,form,filingDate,link}` | `FilingSearchService.ingest_filing` | SECService + Pinecone | see §4.5; same primitive the `search_filings` tool's lazy fallback uses |
 
 ### 4.3 Services
 
@@ -322,7 +323,7 @@ sequenceDiagram
     L-->>B: parsed events, rendered as they arrive
 ```
 
-**Tool registry (`agent/tools.py`):** 26 tools, one per existing service method (fundamentals, financials, history, ownership, forecasts, peers, Future Leader score, rankings, news, brand sentiment, Vanguard/Munro 13F, Congress trades, macro, sector performance, DCF simulation, SEC filings, watchlist read) plus one that isn't a data fetch at all: `propose_watchlist_add`. Large payloads (price history, trade lists, filing text, the DCF histogram) are trimmed in the tool wrapper before being handed to the model — not in the underlying service, which is untouched. See CLAUDE.md "Conversational analyst agent" for how to add one.
+**Tool registry (`agent/tools.py`):** 27 tools, one per existing service method (fundamentals, financials, history, ownership, forecasts, peers, Future Leader score, rankings, news, brand sentiment, Vanguard/Munro 13F, Congress trades, macro, sector performance, DCF simulation, SEC filings, watchlist read) plus one semantic-search tool (`search_filings`, §4.5) and one that isn't a data fetch at all: `propose_watchlist_add`. Large payloads (price history, trade lists, filing text, the DCF histogram) are trimmed in the tool wrapper before being handed to the model — not in the underlying service, which is untouched. See CLAUDE.md "Conversational analyst agent" for how to add one.
 
 **The gated watchlist write:** `propose_watchlist_add` never touches MongoDB. Its dispatch function just returns a "proposed, not added" acknowledgement to the model, and the loop separately emits a `watchlist_proposal` SSE event carrying the ticker and reason. `agent-chat.tsx` renders that as a Confirm/Dismiss card; clicking Confirm calls the **existing, already-authenticated** `addToWatchlist()` (`POST /api/watchlist`) — the same function the Watchlist page uses. The agent's Python code has no code path that can write to the watchlist on its own.
 
@@ -333,6 +334,40 @@ sequenceDiagram
 **Model split:** Claude (`claude-sonnet-5-5`, direct `anthropic` SDK, tool use), not Gemini — the one-shot `AIService` prompts are unaffected and unchanged. Requires its own `ANTHROPIC_API_KEY` in `api/.env` / Vercel, separate from `GEMINI_API_KEY`.
 
 **Safety boundaries:** read-only except the gated watchlist proposal above; no trading, no brokerage integration, none planned. Capped at 8 tool-call turns and 2,048 output tokens per turn (`MAX_TOOL_TURNS`, `MAX_TOKENS` in `loop.py`) — both a UX bound (interactive requests need to finish quickly) and a cost bound (each turn is a billed Claude API call). Sits behind `require_auth` like every other router — no special-casing.
+
+### 4.5 RAG over SEC filings
+
+`search_filings` (one of the 27 tools above) answers questions that need to search *across* a ticker's filings, rather than read one you already have a URL for (`get_filing_text`'s job) — "find mentions of margin pressure across everything ONON has filed."
+
+```
+search_filings(ticker, query)
+        │
+        ▼
+FilingSearchService._has_data(ticker)?  (Pinecone describe_index_stats)
+        │                                      │
+    no data yet                            has data
+        ▼                                      │
+ingest_ticker_filings(ticker, max_filings=2)    │
+  → SECService.get_filings/get_filing_text      │
+  → chunk (1200 chars, 150 overlap)              │
+  → index.upsert_records(records, namespace=ticker)
+        │                                      │
+        └──────────────────┬───────────────────┘
+                            ▼
+        index.search(namespace=ticker, inputs={"text": query}, top_k=limit)
+                            │
+                            ▼
+              top-K {chunk_text, form_type, filed_date, url}
+```
+
+**Pinecone does the embedding, both ways.** The index (`sec-filings`, created once by `api/utils/create_pinecone_index.py`) uses `create_index_for_model` with `llama-text-embed-v2` — `upsert_records` and `search` both take raw text; there's no separate embeddings API call or key anywhere in this codebase. One **namespace per ticker**, so scoping never needs Pinecone's metadata-filter syntax.
+
+**One ingestion primitive, three callers**, all in `FilingSearchService`:
+- `ingest_filing(ticker, filing)` — ingests exactly one filing. Record `_id`s are `{ticker}-{accessionNumber}-{chunk_index}`, so re-ingesting the same filing is a harmless no-op upsert.
+- `ingest_ticker_filings(ticker, max_filings=2)` — loops the above over the most recent filings. Used as `search_filings`'s **lazy fallback** when a ticker's namespace is empty, bounded to 2 filings so a first-time question doesn't stall the chat waiting on a full history.
+- The standalone script `api/utils/ingest_filings.py TICKER [TICKER...] [--max-filings N]`, and the **upload button** next to each filing in the Overview page's "Recent SEC Filings" list (`POST /api/agent/ingest_filing`, one filing at a time) — both pre-populate ahead of ever asking, so the first real question doesn't pay the ingestion latency.
+
+**Verified against the installed SDK, not just its docs** (see CLAUDE.md's Pinecone gotcha for the specific divergences found) — `upsert_records`/`search` are keyword-only, `search`'s `top_k`/`inputs` are flat kwargs, and `Hit` objects use `score` not `_score`.
 
 ---
 
