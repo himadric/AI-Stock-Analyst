@@ -8,13 +8,13 @@ Run once, by hand:
 Safe to re-run - pc.has_index() makes it a no-op if the index already exists.
 """
 import os
+import sys
 from dotenv import load_dotenv
+from pinecone import Pinecone
 
 # Load .env explicitly from api/ directory
 env_path = os.path.join(os.path.dirname(__file__), "../.env")
 load_dotenv(env_path)
-
-from pinecone import Pinecone
 
 INDEX_NAME = "sec-filings"
 
@@ -23,7 +23,7 @@ def create_index():
     api_key = os.environ.get("PINECONE_API_KEY")
     if not api_key:
         print("Error: PINECONE_API_KEY not found in api/.env")
-        return
+        sys.exit(1)
 
     pc = Pinecone(api_key=api_key)
 

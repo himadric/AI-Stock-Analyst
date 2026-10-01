@@ -50,6 +50,7 @@ There is no automated test suite. Check your changes by running both servers and
 | `api/.env` | `SEC_USER_AGENT` | `"AppName you@example.com"`, which SEC.gov requires on every EDGAR request |
 | `api/.env` | `AUTH_SECRET`, `ALLOWED_USER_EMAIL` | **Same values as `.env.local`.** Used to verify API session tokens |
 | `api/.env` | `ANTHROPIC_API_KEY` | The chat widget's agent (`POST /api/agent/chat`). Separate from `GEMINI_API_KEY` — see "Conversational analyst agent" below |
+| `api/.env` | `PINECONE_API_KEY` | RAG over SEC filings — in progress. Currently only `api/utils/create_pinecone_index.py` reads it; not yet wired into any tool |
 
 Templates live in `.env.example` (frontend) and `api/.env.example` (backend). Never commit real values: the example files hold placeholders only, and credentials, emails and connection strings are always read from the environment and never hard-coded (not even as `os.getenv` defaults). CI jobs get their values from GitHub Secrets.
 

@@ -69,6 +69,7 @@ The app uses these services. All of them have a free tier.
 | [MongoDB Atlas](https://www.mongodb.com/cloud/atlas/register) | Stores the watchlist, rankings, trackers and heatmap data | Yes | `MONGO_URI` |
 | [Google AI Studio](https://aistudio.google.com/apikey) | Gemini API key for all AI analysis features | Yes | `GEMINI_API_KEY` |
 | [Anthropic Console](https://console.anthropic.com/) | Claude API key for the Stock Analyst Assistant chat widget | For the chat widget; the rest of the app works without it | `ANTHROPIC_API_KEY` |
+| [Pinecone](https://app.pinecone.io/) | Vector index for semantic search over SEC filings (in progress — currently only used by `api/utils/create_pinecone_index.py`, not yet wired into the chat agent) | No — safe to skip until that feature lands | `PINECONE_API_KEY` |
 | [Google Cloud Console](https://console.cloud.google.com/) | OAuth client for signing in with Google | Yes | `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET` |
 | [Financial Modeling Prep](https://site.financialmodelingprep.com/developer/docs) | US House and Senate trades | For the House, Senate and Congress trackers | `FMP_API_KEY` |
 | [YouTube Data API v3](https://console.cloud.google.com/apis/library/youtube.googleapis.com) | Adds YouTube reviews to brand sentiment | No. Brand sentiment uses news only without it | `YOUTUBE_API_KEY` |
@@ -167,6 +168,7 @@ Fill in **`api/.env`** (backend):
 |---|---|
 | `GEMINI_API_KEY` | Your Gemini API key |
 | `ANTHROPIC_API_KEY` | Your Anthropic API key (optional — only the chat widget needs it; everything else works without it) |
+| `PINECONE_API_KEY` | Your Pinecone API key (optional — only `api/utils/create_pinecone_index.py` uses it so far; this feature is still in progress) |
 | `MONGO_URI` | Your MongoDB connection string (the same one) |
 | `SEC_USER_AGENT` | Your app name and email, for example `"AIAnalyst you@example.com"`. SEC.gov requires a contact email on every request |
 | `FMP_API_KEY` | Your Financial Modeling Prep key (optional) |
