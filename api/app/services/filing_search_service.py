@@ -108,6 +108,25 @@ class FilingSearchService:
             print(f"Warning: describe_index_stats failed: {e}")
             return False
 
+    def get_indexed_status(self, ticker: str, accession_numbers: list[str]) -> dict[str, bool]:
+        """
+        Checks which of the given filings (by accessionNumber) are already
+        indexed, in ONE Pinecone call - fetch() only returns ids that actually
+        exist, so checking each filing's first chunk id is enough to know
+        whether that filing was ingested. Used by the Overview page to show
+        the upload button as already-done instead of re-offering it.
+        """
+        if not self.index or not accession_numbers:
+            return {acc: False for acc in accession_numbers}
+        ids = [f"{ticker}-{acc}-0" for acc in accession_numbers]
+        try:
+            result = self.index.fetch(ids=ids, namespace=ticker)
+            found = set(result.vectors.keys())
+        except Exception as e:
+            print(f"Warning: fetch for indexed-status check failed: {e}")
+            return {acc: False for acc in accession_numbers}
+        return {acc: f"{ticker}-{acc}-0" in found for acc in accession_numbers}
+
     def search_filings(self, ticker: str, query: str, limit: int = 5) -> dict:
         if not self.index:
             return {"error": "Pinecone is not configured (missing PINECONE_API_KEY)"}

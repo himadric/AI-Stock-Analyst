@@ -103,6 +103,16 @@ export async function ingestFiling(
     return res.json();
 }
 
+// Checks which filings (by accessionNumber) are already indexed in Pinecone,
+// in one call - so the upload button can show "already done" instead of
+// re-offering an upload that would just be a wasted no-op.
+export async function fetchFilingStatus(ticker: string, accessionNumbers: string[]): Promise<Record<string, boolean>> {
+    if (accessionNumbers.length === 0) return {};
+    const res = await apiFetch(`/agent/filing_status?ticker=${ticker}&accessionNumbers=${accessionNumbers.join(",")}`);
+    if (!res.ok) return {};
+    return res.json();
+}
+
 export async function searchTickers(query: string) {
     const res = await apiFetch(`/sec/search?query=${encodeURIComponent(query)}`);
     if (!res.ok) throw new Error("Failed to search tickers");

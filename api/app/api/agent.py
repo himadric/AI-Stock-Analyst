@@ -1,7 +1,7 @@
 import json
 from typing import List, Literal
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
@@ -53,3 +53,12 @@ def chat(request: ChatRequest):
 @router.post("/ingest_filing")
 def ingest_filing(request: IngestFilingRequest):
     return filing_search_service.ingest_filing(request.ticker, request.model_dump())
+
+
+# Sync: one Pinecone fetch() call, but still a blocking network call.
+# Called by the Overview page right after it loads the filings list, so the
+# upload button can render as already-done instead of re-offering it.
+@router.get("/filing_status")
+def filing_status(ticker: str, accessionNumbers: str = Query(..., description="Comma-separated accession numbers")):
+    accession_list = [a for a in accessionNumbers.split(",") if a]
+    return filing_search_service.get_indexed_status(ticker, accession_list)
