@@ -4,9 +4,17 @@ AI-powered stock and ETF research dashboard.
 
 ## Demo
 
+**Full walkthrough**
+
 [![Watch the AI Analyst demo on YouTube](docs/media/demo-thumbnail.png)](https://youtu.be/b412Drb1zYM)
 
 *Click the image to watch the 7-minute walkthrough on YouTube. To open it in a new tab, Ctrl-click it (Windows/Linux) or ⌘-click it (Mac).*
+
+**Stock Analyst Assistant (chat agent)**
+
+[![Watch the Stock Analyst Assistant demo on YouTube](docs/media/chat-demo-thumbnail.png)](https://youtu.be/rlcHrS3WdBg)
+
+*Click the image to watch the chat assistant research a ticker and answer questions, live, on YouTube.*
 
 ## About
 
