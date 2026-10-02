@@ -276,7 +276,7 @@ All paths are prefixed with `/api`.
 | `GET /senate/trades` | router → Mongo `senate_tracker` | snapshot | same |
 | `GET /congress/trades?limit` | `CongressService` | live FMP `stable/senate-latest` and `house-latest` | |
 | **agent** | `agent.py` → `agent/loop.py` + `agent/tools.py` | Anthropic Claude | see §4.4 |
-| `POST /agent/chat {messages}` | `run_agent_turn` | tool-use loop over 27 tools wrapping the services above | `text/event-stream`, not JSON |
+| `POST /agent/chat {messages}` | `run_agent_turn` | tool-use loop over 28 tools wrapping the services above | `text/event-stream`, not JSON |
 | `POST /agent/ingest_filing {ticker,accessionNumber,form,filingDate,link}` | `FilingSearchService.ingest_filing` | SECService + Pinecone | see §4.5; same primitive the `search_filings` tool's lazy fallback uses |
 | `GET /agent/filing_status?ticker&accessionNumbers` | `FilingSearchService.get_indexed_status` | one Pinecone `fetch()` call | `{accessionNumber: bool}`; drives the upload button's disabled/checked state |
 
@@ -324,7 +324,9 @@ sequenceDiagram
     L-->>B: parsed events, rendered as they arrive
 ```
 
-**Tool registry (`agent/tools.py`):** 27 tools, one per existing service method (fundamentals, financials, history, ownership, forecasts, peers, Future Leader score, rankings, news, brand sentiment, Vanguard/Munro 13F, Congress trades, macro, sector performance, DCF simulation, SEC filings, watchlist read) plus one semantic-search tool (`search_filings`, §4.5) and one that isn't a data fetch at all: `propose_watchlist_add`. Large payloads (price history, trade lists, filing text, the DCF histogram) are trimmed in the tool wrapper before being handed to the model — not in the underlying service, which is untouched. See CLAUDE.md "Conversational analyst agent" for how to add one.
+**Tool registry (`agent/tools.py`):** 28 tools, one per existing service method (fundamentals, financials, history, ownership, forecasts, peers, Future Leader score, rankings, news, brand sentiment, Vanguard/Munro 13F, Congress trades, macro, sector performance, DCF simulation, SEC filings, watchlist read) plus one semantic-search tool (`search_filings`, §4.5), one cross-referencing tool (`find_smart_money_convergence`, below), and one that isn't a data fetch at all: `propose_watchlist_add`. Large payloads (price history, trade lists, filing text, the DCF histogram) are trimmed in the tool wrapper before being handed to the model — not in the underlying service, which is untouched. See CLAUDE.md "Conversational analyst agent" for how to add one.
+
+**Smart-money convergence (`smart_money_service.py`):** `find_smart_money_convergence` cross-references three *existing, independently-fetched* signals — Congress trades, Vanguard's latest 13F, and Munro Partners' latest 13F — for tickers where at least 2 of the 3 agree on direction, then enriches each with its Future Leader score and its sector's current performance, so you can see whether the convergence is happening in a hot or cold sector. This logic lives in its own service, not inlined into `agent/tools.py` or bolted onto `FinanceService`, because it genuinely combines multiple services rather than wrapping one. One non-obvious piece: yfinance's sector names (`"Consumer Cyclical"`, `"Financial Services"`, …) don't match the SPDR/GICS names `get_sector_performance()` uses (`"Consumer Discret."`, `"Financials"`, …) — `YFINANCE_TO_SPDR_SECTOR` in that file cross-walks the two. Slow (~10s for a full scan), same tolerance band as `run_dcf_simulation`.
 
 **The gated watchlist write:** `propose_watchlist_add` never touches MongoDB. Its dispatch function just returns a "proposed, not added" acknowledgement to the model, and the loop separately emits a `watchlist_proposal` SSE event carrying the ticker and reason. `agent-chat.tsx` renders that as a Confirm/Dismiss card; clicking Confirm calls the **existing, already-authenticated** `addToWatchlist()` (`POST /api/watchlist`) — the same function the Watchlist page uses. The agent's Python code has no code path that can write to the watchlist on its own.
 
@@ -338,7 +340,7 @@ sequenceDiagram
 
 ### 4.5 RAG over SEC filings
 
-`search_filings` (one of the 27 tools above) answers questions that need to search *across* a ticker's filings, rather than read one you already have a URL for (`get_filing_text`'s job) — "find mentions of margin pressure across everything ONON has filed."
+`search_filings` (one of the 28 tools above) answers questions that need to search *across* a ticker's filings, rather than read one you already have a URL for (`get_filing_text`'s job) — "find mentions of margin pressure across everything ONON has filed."
 
 ```
 search_filings(ticker, query)

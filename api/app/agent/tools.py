@@ -22,6 +22,7 @@ from app.services.institution_service import InstitutionService
 from app.services.congress_service import CongressService
 from app.services.simulation import SimulationService
 from app.services.filing_search_service import FilingSearchService
+from app.services.smart_money_service import SmartMoneyService
 from app.db import db
 
 finance_service = FinanceService()
@@ -31,6 +32,7 @@ institution_service = InstitutionService()
 congress_service = CongressService()
 simulation_service = SimulationService()
 filing_search_service = FilingSearchService()
+smart_money_service = SmartMoneyService()
 
 
 def _cap_list(items, limit, label="items"):
@@ -161,6 +163,10 @@ def _search_filings(ticker: str, query: str, limit: int = 5):
     return filing_search_service.search_filings(ticker, query, limit=limit)
 
 
+def _find_smart_money_convergence(limit: int = 10):
+    return smart_money_service.find_convergence(limit=limit)
+
+
 def _get_watchlist():
     return list(db.get_db().watchlist.find({}, {"_id": 0}))
 
@@ -196,6 +202,7 @@ TOOL_DISPATCH = {
     "get_filings": _get_filings,
     "get_filing_text": _get_filing_text,
     "search_filings": _search_filings,
+    "find_smart_money_convergence": _find_smart_money_convergence,
     "get_watchlist": _get_watchlist,
     "propose_watchlist_add": _propose_watchlist_add,
 }
@@ -363,6 +370,24 @@ TOOLS = [
                 "limit": {"type": "integer", "default": 5},
             },
             "required": ["ticker", "query"],
+        },
+    },
+    {
+        "name": "find_smart_money_convergence",
+        "description": (
+            "Market-wide scan (not scoped to one ticker) that cross-references three independent signals - "
+            "Congress trades, Vanguard's latest 13F moves, and Munro Partners' latest 13F moves - for tickers "
+            "where at least 2 of the 3 agree on the same direction (buy or sell). Each result also includes the "
+            "ticker's Future Leader score and its sector's current performance, so you can see whether the "
+            "convergence is happening in a hot or cold sector. Slow (10+ seconds) - use it deliberately when "
+            "asked something like 'where does smart money agree' or 'any convergence on my watchlist names', "
+            "not for every question."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "limit": {"type": "integer", "default": 10, "description": "Max number of converged tickers to return"},
+            },
         },
     },
     {
