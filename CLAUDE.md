@@ -80,7 +80,7 @@ api/
   app/agent/tools.py           analyst-agent tool registry (wraps existing services, doesn't fetch data itself)
   app/agent/loop.py            the Claude tool-use loop behind POST /api/agent/chat
   app/services/filing_search_service.py   RAG over SEC filings (chunk, Pinecone upsert/search; see search_filings tool)
-  app/services/smart_money_service.py     cross-references Congress/13F/sector data; see find_smart_money_convergence tool
+  app/services/smart_money_service.py     cross-references Congress/13F/sector data; see find_smart_money_convergence + get_investment_verdict tools
   utils/create_pinecone_index.py          one-time setup: creates the "sec-filings" Pinecone index
   utils/ingest_filings.py                 CLI to pre-populate a ticker's filings into Pinecone ahead of time
   app/data/*.json             static data (S&P index constituents, UEI map)

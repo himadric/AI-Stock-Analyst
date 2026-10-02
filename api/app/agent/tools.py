@@ -167,6 +167,53 @@ def _find_smart_money_convergence(limit: int = 10):
     return smart_money_service.find_convergence(limit=limit)
 
 
+def _get_investment_verdict(ticker: str):
+    """
+    Gathers everything needed for a Buy/Hold/Sell judgment in one call,
+    instead of leaving the model to chain 6+ separate tool calls (slower,
+    costlier, and not guaranteed to cover the same ground every time).
+    Deliberately excludes the DCF simulation - that's slow (several
+    seconds on its own) and the model can still call run_dcf_simulation
+    separately if a deeper valuation model is actually wanted.
+
+    Each piece is trimmed to what a verdict needs, not the full raw
+    service response - company_info alone has ~35 fields including long
+    business-summary text and an executive list that would otherwise
+    bloat this well past dispatch()'s truncation cap before the model
+    ever sees the smart-money or sentiment signal at the end.
+    """
+    info = finance_service.get_company_info(ticker) or {}
+    fundamentals = {
+        k: info.get(k)
+        for k in (
+            "name", "sector", "industry", "current_price", "market_cap",
+            "pe_ratio", "forward_pe", "peg_ratio", "price_to_sales",
+            "profit_margin", "roe", "free_cash_flow", "debt_to_equity",
+            "current_ratio", "dividend_yield", "beta",
+            "fifty_two_week_low", "fifty_two_week_high", "revenue_growth", "is_etf",
+        )
+    }
+
+    quarterly = finance_service.get_quarterly_financials(ticker) or []
+    quarterly_trend = [
+        {k: q.get(k) for k in ("date", "revenue", "net_income", "operating_income", "diluted_eps")}
+        for q in quarterly
+    ]
+
+    sentiment = sentiment_service.get_brand_sentiment(ticker) or {}
+
+    return {
+        "ticker": ticker,
+        "fundamentals": fundamentals,
+        "quarterly_trend": quarterly_trend,
+        "analyst_forecast": finance_service.get_forecast(ticker),
+        "recent_analyst_actions": _get_analyst_actions(ticker)[:5],
+        "future_leader_score": finance_service.get_future_leader_score(ticker),
+        "smart_money_signal": smart_money_service.get_ticker_signal(ticker),
+        "brand_sentiment": sentiment.get("analysis"),
+    }
+
+
 def _get_watchlist():
     return list(db.get_db().watchlist.find({}, {"_id": 0}))
 
@@ -203,6 +250,7 @@ TOOL_DISPATCH = {
     "get_filing_text": _get_filing_text,
     "search_filings": _search_filings,
     "find_smart_money_convergence": _find_smart_money_convergence,
+    "get_investment_verdict": _get_investment_verdict,
     "get_watchlist": _get_watchlist,
     "propose_watchlist_add": _propose_watchlist_add,
 }
@@ -388,6 +436,23 @@ TOOLS = [
             "properties": {
                 "limit": {"type": "integer", "default": 10, "description": "Max number of converged tickers to return"},
             },
+        },
+    },
+    {
+        "name": "get_investment_verdict",
+        "description": (
+            "One-call bundle of everything needed to judge whether a ticker looks like a Buy, Hold, or Sell: "
+            "key fundamentals and valuation ratios, a 4-quarter revenue/earnings trend, analyst price-target "
+            "consensus and recent upgrades/downgrades, this app's Future Leader score, whether this specific "
+            "ticker shows up in recent Congress/Vanguard/Munro activity, and brand sentiment. Use this - not a "
+            "string of separate calls - whenever asked for an overall verdict, recommendation, or 'should I buy "
+            "this' on one ticker. Deliberately excludes the DCF simulation (that's much slower); call "
+            "run_dcf_simulation separately if a deeper intrinsic-value estimate is specifically wanted too."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {"ticker": {"type": "string"}},
+            "required": ["ticker"],
         },
     },
     {

@@ -47,12 +47,15 @@ class SmartMoneyService:
         except Exception:
             return None
 
-    def find_convergence(self, limit: int = 10) -> dict:
+    def _build_signals(self) -> dict[str, dict]:
+        """
+        Shared by find_convergence() (market-wide scan) and get_ticker_signal()
+        (one ticker) - both need the same three-source fetch and per-ticker
+        tally, just sliced differently afterward.
+        """
         congress = self.congress_service.get_recent_trades(limit=150)
         vanguard = self.institution_service.get_vanguard_trades(limit=30)
         munro = self.institution_service.get_munro_trades(limit=30)
-        sector_performance = self.finance_service.get_sector_performance()
-        sector_perf_by_name = {s["name"]: s for s in sector_performance} if isinstance(sector_performance, list) else {}
 
         signals: dict[str, dict] = {}
 
@@ -83,22 +86,32 @@ class SmartMoneyService:
             for row in munro.get("top_sells", []):
                 sig(row["ticker"])["munro"] = "sell"
 
+        return signals
+
+    def _classify(self, s: dict) -> tuple[list[str], list[str]]:
+        buy_sources, sell_sources = [], []
+        if s["congress_buys"] > s["congress_sells"] and s["congress_buys"] > 0:
+            buy_sources.append("congress")
+        elif s["congress_sells"] > s["congress_buys"] and s["congress_sells"] > 0:
+            sell_sources.append("congress")
+        if s["vanguard"] == "buy":
+            buy_sources.append("vanguard")
+        elif s["vanguard"] == "sell":
+            sell_sources.append("vanguard")
+        if s["munro"] == "buy":
+            buy_sources.append("munro")
+        elif s["munro"] == "sell":
+            sell_sources.append("munro")
+        return buy_sources, sell_sources
+
+    def find_convergence(self, limit: int = 10) -> dict:
+        signals = self._build_signals()
+        sector_performance = self.finance_service.get_sector_performance()
+        sector_perf_by_name = {s["name"]: s for s in sector_performance} if isinstance(sector_performance, list) else {}
+
         results = []
         for ticker, s in signals.items():
-            buy_sources, sell_sources = [], []
-            if s["congress_buys"] > s["congress_sells"] and s["congress_buys"] > 0:
-                buy_sources.append("congress")
-            elif s["congress_sells"] > s["congress_buys"] and s["congress_sells"] > 0:
-                sell_sources.append("congress")
-            if s["vanguard"] == "buy":
-                buy_sources.append("vanguard")
-            elif s["vanguard"] == "sell":
-                sell_sources.append("vanguard")
-            if s["munro"] == "buy":
-                buy_sources.append("munro")
-            elif s["munro"] == "sell":
-                sell_sources.append("munro")
-
+            buy_sources, sell_sources = self._classify(s)
             sources = buy_sources if len(buy_sources) >= len(sell_sources) else sell_sources
             if len(sources) < 2:
                 continue  # need at least 2 independent sources agreeing to call it convergence
@@ -127,4 +140,31 @@ class SmartMoneyService:
         return {
             "convergence": results,
             "sector_performance": sector_performance,
+        }
+
+    def get_ticker_signal(self, ticker: str) -> dict:
+        """
+        Cheap, single-ticker counterpart to find_convergence() - used by
+        get_investment_verdict (agent/tools.py) so a full verdict doesn't
+        need to run (and filter down) a whole market-wide scan just to
+        check one name. Still does the same three-source fetch under the
+        hood (that part isn't ticker-filterable at the source), but skips
+        find_convergence's per-result enrichment, since the verdict tool
+        already fetches Future Leader score itself.
+        """
+        signals = self._build_signals()
+        s = signals.get(ticker)
+        if not s:
+            return {"ticker": ticker, "direction": None, "sources": [], "note": "No recent Congress or 13F activity found for this ticker."}
+
+        buy_sources, sell_sources = self._classify(s)
+        sources = buy_sources if len(buy_sources) >= len(sell_sources) else sell_sources
+        if not sources:
+            return {"ticker": ticker, "direction": None, "sources": [], "note": "No clear buy/sell signal from Congress or 13F sources."}
+
+        return {
+            "ticker": ticker,
+            "direction": "buy" if sources is buy_sources else "sell",
+            "sources": sources,
+            "source_count": len(sources),
         }
