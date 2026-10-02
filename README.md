@@ -22,23 +22,60 @@ AI-powered stock and ETF research dashboard.
 
 *Click the image to watch semantic search across SEC filings in action — indexing a filing and the chat agent searching it — on YouTube.*
 
+**Investment verdict (Buy / Hold / Sell)**
+
+[![Watch the investment verdict demo on YouTube](docs/media/verdict-demo-thumbnail.png)](https://youtu.be/JJ7ZjgA9amc)
+
+*Click the image to watch the chat assistant weigh fundamentals, analyst ratings, smart-money activity, and sentiment into one verdict — on YouTube.*
+
 ## About
 
 AI Analyst puts fundamental data, market data and AI-written analysis for a stock or ETF on one dashboard. Search for a ticker to see its key metrics, quarterly financial statements, price charts with technical indicators, analyst forecasts and ownership. You can also run a Monte Carlo DCF valuation, or have Google Gemini summarize SEC filings, flag valuation and risk red flags, and read price charts and macro conditions. A **Stock Analyst Assistant** — a chat bubble in the bottom-right corner of every page (Claude, with real tool access to this app's data) — answers open-ended questions, showing its work as it looks things up. It can search across a ticker's SEC filings semantically, not just read one you point it at, and can suggest watchlist additions, but only ever adds one with your explicit confirmation.
 
-Beyond single stocks, the app tracks the wider market:
-
-- **Market views:** an S&P 500 relative-strength heatmap, sector performance, and a macro dashboard of indices, rates, currencies and commodities.
-- **Future Leader rankings:** small-, mid- and large-cap companies scored on growth efficiency, R&D intensity, scalability, valuation and ROIC.
-- **Smart-money trackers:** US House and Senate stock trades, Vanguard and Munro Partners 13F moves, and book-to-bill ratios for government contractors.
-- **Brand sentiment:** sentiment scored from news and YouTube reviews.
-- **ETF analysis:** holdings, sector allocation, and an AI "Quality Core" assessment.
+Beyond single stocks, the app tracks the wider market too — see the full breakdown in [Features](#features) below.
 
 **Built with:** Next.js, React, TypeScript, Tailwind CSS and shadcn/ui on the frontend; Python FastAPI on the backend. Data comes from Yahoo Finance, SEC EDGAR, USAspending.gov and Financial Modeling Prep. Google Gemini writes the AI analysis, MongoDB stores precomputed data, and the app is deployed on Vercel.
 
 Every pull request also gets an automated, advisory-only code review from Claude Code (`.github/workflows/claude-code-review.yml`); see the "Code review checklist" it follows in [CLAUDE.md](CLAUDE.md).
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how it's built and [CLAUDE.md](CLAUDE.md) for development conventions.
+
+## Features
+
+### Per-stock research
+
+- **Overview** — company profile and key metrics (with plain-English tooltips), a financial performance chart, the Future Leader score, recent SEC filings (open, AI-summarize, or index for the chat assistant's search), recent news with AI sentiment, peer comparison, and AI valuation/risk red-flag analysis. Add the ticker to your watchlist from here.
+- **Financials** — quarterly income statement, balance sheet, cash flow, and derived ratios.
+- **Chart** — price history with period/interval controls, SMA overlays, ticker comparisons, and an AI read on trend/support/resistance.
+- **Simulation** — a Monte Carlo DCF valuation: thousands of simulated paths from historical growth/margin volatility, with adjustable WACC, a growth override, and a bear-case toggle.
+- **Forecast** — analyst price targets, consensus rating, and recent upgrades/downgrades.
+- **Ownership** — the insider/institution/public split, top institutional holders, and recent insider transactions.
+- **Brand Sentiment** — sentiment scored from news and YouTube reviews (VADER), with a net sentiment score, pos/neu/neg breakdown, emotion tags, and trending keywords.
+- **ETF Analysis** — holdings, sector weightings, and an AI "Quality Core" assessment for a 10-year horizon.
+- **Watchlist** — your saved tickers with live price and day change.
+
+### Stock Analyst Assistant (AI chat)
+
+A chat bubble in the bottom-right corner of every page, backed by a tool-calling Claude agent with real-time access to this app's data — not a canned chatbot. It shows its work live as a collapsible trace (which tools it called, in order) while it researches, then gives its answer. Capabilities include:
+
+- Pulling any of the data above — fundamentals, financials, ownership, forecasts, peer comparisons, the Future Leader score, brand sentiment, and the DCF simulation — for any ticker, on request.
+- **Semantic search across a ticker's SEC filings** (RAG, via Pinecone) — "find mentions of margin pressure across everything ONON has filed" — not just reading one filing you point it at. Filings index automatically the first time they're needed, or you can index one ahead of time with the upload button on the Overview page.
+- **Smart-money convergence** — scans Congress trades, Vanguard's and Munro Partners' latest 13F filings, and sector performance together, and flags tickers where multiple independent sources agree on the same direction.
+- **A full investment verdict** — one request bundles fundamentals, the earnings trend, analyst ratings, the Future Leader score, smart-money activity, and sentiment into a single Buy/Hold/Sell judgment with reasoning (the DCF simulation stays a separate, explicit request, since it's much slower).
+- **Watchlist additions** — it can propose adding a ticker, but an addition only happens after you explicitly confirm it.
+
+### Market-wide views
+
+- **Finder** — a sector map or a 3×3 growth/value style box of curated tickers with live quotes.
+- **Market Heatmap** — an S&P 500 treemap colored by 1-, 3-, and 6-month relative strength.
+- **Macro** — major indices, rates, currencies, commodities, and economic indicators, plus sector performance and an AI read on overall market conditions.
+
+### Smart-money & institutional tracking
+
+- **Institutional Trackers** — Vanguard's and Munro Partners' top buys and sells from their latest 13F filings.
+- **US House Tracker** / **US Senate Tracker** — recent stock trades disclosed by members of Congress.
+- **Rankings** — the Future Leader leaderboard (small-, mid-, and large-cap), scored on growth efficiency, R&D intensity, scalability, valuation (PEG), and management (ROIC).
+- **Govt Spending Tracker** — book-to-bill ratios for government contractors, from recent federal contract awards vs. quarterly revenue.
 
 ---
 
