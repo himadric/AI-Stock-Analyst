@@ -51,6 +51,7 @@ There is no automated test suite. Check your changes by running both servers and
 | `api/.env` | `AUTH_SECRET`, `ALLOWED_USER_EMAIL` | **Same values as `.env.local`.** Used to verify API session tokens |
 | `api/.env` | `ANTHROPIC_API_KEY` | The chat widget's agent (`POST /api/agent/chat`). Separate from `GEMINI_API_KEY` — see "Conversational analyst agent" below |
 | `api/.env` | `PINECONE_API_KEY` | `FilingSearchService` — the agent's `search_filings` tool and the SEC Filings upload button. Run `api/utils/create_pinecone_index.py` once first |
+| `api/.env` | `FRED_API_KEY` | Live GDP/unemployment/CPI/Fed-rate data on `/macro` (`FinanceService.get_economic_data`). Optional — falls back to a hardcoded 2024 snapshot if unset |
 
 Templates live in `.env.example` (frontend) and `api/.env.example` (backend). Never commit real values: the example files hold placeholders only, and credentials, emails and connection strings are always read from the environment and never hard-coded (not even as `os.getenv` defaults). CI jobs get their values from GitHub Secrets.
 
@@ -209,7 +210,7 @@ This review is advisory only. It never approves, requests changes, or edits code
 - NextAuth uses `basePath: "/auth_endpoints"`, not the default `/api/auth`, so it doesn't collide with the FastAPI proxy.
 - The Vercel Python function has a size limit. Don't add heavy dependencies (scipy, torch, etc.) to `api/requirements.txt`.
 - The Gemini model name is hard-coded in `AIService.__init__` (`gemini-3-flash-preview`).
-- `get_economic_data()` (GDP/CPI/unemployment on `/macro`) returns hard-coded 2024 values, not live data.
+- `get_economic_data()` (GDP/CPI/unemployment/Fed rate on `/macro`) uses live FRED API data when `FRED_API_KEY` is set, falling back to a hardcoded 2024 snapshot otherwise (same optional-key degrade pattern as `YOUTUBE_API_KEY`). The CPI series uses FRED's `units=pc1` transform to get a year-over-year inflation rate server-side, rather than computing it from the raw index.
 - **Two AI providers, deliberately.** `AIService` (Gemini, raw REST, no tool use) powers every one-shot analysis button. `api/app/agent/loop.py` (Claude, via the `anthropic` SDK, tool use) powers the chat widget only. Don't mix them — a new one-shot analysis is Gemini via `AIService`; a new tool the agent can call is Claude via `agent/tools.py`.
 - **`/api/agent/chat` streams SSE over a plain `fetch`, not the browser's `EventSource`.** `EventSource` can't send the `Authorization` header `apiFetch` needs, so `streamAgentChat` in `lib/api.ts` reads `res.body` itself and parses `data: {...}\n\n` frames by hand. Keep that in mind if you touch the wire format on either side — the frontend's parser and the backend's `f"data: {json.dumps(event)}\n\n"` framing have to match.
 - The chat widget's conversation history is **client-side only** (React state in `agent-chat.tsx`) — nothing is persisted to Mongo, and a page reload loses it. This was a deliberate v1 simplification, not an oversight.

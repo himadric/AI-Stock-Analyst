@@ -1162,13 +1162,72 @@ class FinanceService:
              print(f"Error fetching macro data: {e}")
              return []
 
+    # FRED series backing each economic indicator. "units": "pc1" asks FRED to
+    # transform the series server-side into percent-change-from-year-ago,
+    # which is what turns the raw CPI index into an inflation rate - no
+    # manual computation needed.
+    _FRED_SERIES = [
+        {"name": "GDP Growth Rate", "ticker": "GDP", "series_id": "A191RL1Q225SBEA"},
+        {"name": "Unemployment Rate", "ticker": "UNRATE", "series_id": "UNRATE"},
+        {"name": "Inflation Rate (CPI)", "ticker": "CPI", "series_id": "CPIAUCSL", "units": "pc1"},
+        {"name": "Fed Interest Rate", "ticker": "FEDRATE", "series_id": "FEDFUNDS"},
+    ]
+
     def get_economic_data(self):
         """
-        Scrapes key economic indicators (GDP, CPI, Unemployment) from public sources.
-        Returns them in a format compatible with quotes.
+        Live GDP/unemployment/CPI/Fed-rate readings from the FRED API. Falls
+        back to a hardcoded 2024 snapshot (_get_fallback_economic_data) if
+        FRED_API_KEY isn't configured, or if a series fetch fails - same
+        optional-key degrade pattern as YOUTUBE_API_KEY elsewhere in this app.
         """
-        # Hardcoded history based on 2024 data (Simulation for Demo)
-        # In production this would come from FRED API
+        api_key = os.getenv("FRED_API_KEY")
+        if not api_key:
+            return self._get_fallback_economic_data()
+
+        data = []
+        for series in self._FRED_SERIES:
+            try:
+                params = {
+                    "series_id": series["series_id"],
+                    "api_key": api_key,
+                    "file_type": "json",
+                    "sort_order": "desc",
+                    "limit": 12,
+                }
+                if "units" in series:
+                    params["units"] = series["units"]
+                resp = requests.get("https://api.stlouisfed.org/fred/series/observations", params=params, timeout=10)
+                resp.raise_for_status()
+                observations = resp.json().get("observations", [])
+                # FRED uses "." for a missing reading rather than omitting it
+                history = [
+                    {"date": o["date"], "value": float(o["value"])}
+                    for o in observations if o.get("value") not in (None, ".")
+                ]
+                if not history:
+                    continue
+                data.append({
+                    "ticker": series["ticker"],
+                    "name": series["name"],
+                    "type": "Economy",
+                    "price": history[0]["value"],
+                    "change": 0,
+                    "change_percent": 0,
+                    "currency": "%" if "Rate" in series["name"] else "",
+                    "history": list(reversed(history)),
+                })
+            except Exception as e:
+                print(f"FRED fetch failed for {series['name']} ({series['series_id']}): {e}")
+                continue
+
+        return data if data else self._get_fallback_economic_data()
+
+    def _get_fallback_economic_data(self):
+        """
+        Hardcoded 2024 snapshot, used only when FRED_API_KEY is missing or
+        every FRED fetch fails - keeps the Macro page populated rather than
+        empty, at the cost of being stale. Not live data.
+        """
         indicators = [
             {
                 "name": "GDP Growth Rate", 

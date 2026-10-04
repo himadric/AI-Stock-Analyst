@@ -117,6 +117,7 @@ The app uses these services. All of them have a free tier.
 | [Google Cloud Console](https://console.cloud.google.com/) | OAuth client for signing in with Google | Yes | `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET` |
 | [Financial Modeling Prep](https://site.financialmodelingprep.com/developer/docs) | US House and Senate trades | For the House, Senate and Congress trackers | `FMP_API_KEY` |
 | [YouTube Data API v3](https://console.cloud.google.com/apis/library/youtube.googleapis.com) | Adds YouTube reviews to brand sentiment | No. Brand sentiment uses news only without it | `YOUTUBE_API_KEY` |
+| [FRED](https://fred.stlouisfed.org/docs/api/api_key.html) | Live GDP, unemployment, CPI, and Fed funds rate on the Macro page | No — a hardcoded 2024 snapshot is used without it | `FRED_API_KEY` |
 
 Yahoo Finance, SEC EDGAR and USAspending.gov don't need accounts.
 
@@ -217,6 +218,7 @@ Fill in **`api/.env`** (backend):
 | `SEC_USER_AGENT` | Your app name and email, for example `"AIAnalyst you@example.com"`. SEC.gov requires a contact email on every request |
 | `FMP_API_KEY` | Your Financial Modeling Prep key (optional) |
 | `YOUTUBE_API_KEY` | Your YouTube Data API key (optional) |
+| `FRED_API_KEY` | Your FRED API key (optional — powers live GDP/unemployment/CPI/Fed-rate data on the Macro page; a hardcoded 2024 snapshot is used without it) |
 | `AUTH_SECRET` | **The same value as in `.env.local`.** The backend uses it to check that each request comes from a signed-in user |
 | `ALLOWED_USER_EMAIL` | The same email as in `.env.local` |
 
