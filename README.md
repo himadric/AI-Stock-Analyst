@@ -62,6 +62,7 @@ A chat bubble in the bottom-right corner of every page, backed by a tool-calling
 - **Semantic search across a ticker's SEC filings** (RAG, via Pinecone) — "find mentions of margin pressure across everything ONON has filed" — not just reading one filing you point it at. Filings index automatically the first time they're needed, or you can index one ahead of time with the upload button on the Overview page.
 - **Smart-money convergence** — scans Congress trades, Vanguard's and Munro Partners' latest 13F filings, and sector performance together, and flags tickers where multiple independent sources agree on the same direction.
 - **A full investment verdict** — one request bundles fundamentals, the earnings trend, analyst ratings, the Future Leader score, smart-money activity, and sentiment into a single Buy/Hold/Sell judgment with reasoning (the DCF simulation stays a separate, explicit request, since it's much slower).
+- **Web search** — for anything the data above doesn't cover (breaking news, current macro/Fed questions), it can search the web, via a free [DuckDuckGo MCP server](https://github.com/nickclyde/duckduckgo-mcp-server) it runs as its own process over the Model Context Protocol — the one tool in this agent backed by an external MCP server rather than this app's own data.
 - **Watchlist additions** — it can propose adding a ticker, but an addition only happens after you explicitly confirm it.
 
 ### Market-wide views
@@ -301,6 +302,7 @@ Each push to your fork's default branch then redeploys the app.
 | AI buttons show `Error from AI Provider` | Check `GEMINI_API_KEY` in `api/.env`, then restart the backend. It reads `.env` only at startup. |
 | Pages show no data locally | Make sure the backend is running on port 8000. The frontend calls it directly during development. |
 | Heatmap, rankings or trackers are empty | Run the scripts in [Load the market data](#4-load-the-market-data). |
+| The chat agent's web search fails with `No such file or directory: 'duckduckgo-mcp-server'` | Re-run `pip install -r requirements.txt` inside the activated virtualenv so the console script installs into it. |
 
 ## License
 
