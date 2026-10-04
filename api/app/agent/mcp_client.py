@@ -14,21 +14,26 @@ search_web() is a thin anyio.run() bridge over the real async client
 call. anyio.run() starts its own event loop, which is only safe because
 nothing in this call stack already has one running.
 """
-import os
 import sys
 import anyio
 from mcp import Client
 from mcp.types import TextContent
 from mcp.client.stdio import StdioServerParameters
 
-# Resolve the console script next to the running interpreter rather than
-# trusting $PATH - this backend is run as `.venv/bin/uvicorn ...` without
-# activating the venv (see CLAUDE.md commands), so $PATH never gains
-# .venv/bin, and a bare "duckduckgo-mcp-server" command fails to spawn.
-# pip installs console scripts into the same bin/ dir as the interpreter
-# that ran pip install, so this resolves correctly for any venv.
-_SCRIPT = os.path.join(os.path.dirname(sys.executable), "duckduckgo-mcp-server")
-_SERVER_PARAMS = StdioServerParameters(command=_SCRIPT if os.path.exists(_SCRIPT) else "duckduckgo-mcp-server")
+# Invoke the package's documented entry point (duckduckgo_mcp_server.server:main,
+# per its pyproject.toml) directly through the running interpreter, rather than
+# the "duckduckgo-mcp-server" console script pip normally generates. Locally
+# that script works, but on Vercel's Python runtime it isn't on $PATH or next
+# to sys.executable at all - console-script entry points apparently aren't
+# materialized there the way a normal pip install creates them (confirmed via
+# a real "No such file or directory" error in production). `python -c` only
+# depends on the module being importable by this same interpreter, which is
+# guaranteed - it's a requirements.txt dependency. main() takes no required
+# args; its argparse default is stdio transport, which is what we want.
+_SERVER_PARAMS = StdioServerParameters(
+    command=sys.executable,
+    args=["-c", "from duckduckgo_mcp_server.server import main; main()"],
+)
 
 
 async def _search(query: str, max_results: int) -> str:
