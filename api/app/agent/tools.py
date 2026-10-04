@@ -487,7 +487,9 @@ TOOLS = [
             "data is a snapshot, not live), analyst commentary not captured by get_company_news, or any "
             "non-ticker question entirely. Prefer the other, more specific tools for anything about a "
             "ticker's price, financials, filings, or sentiment - they're faster and more precise. Use this "
-            "only when nothing else in the toolset can answer the question."
+            "only when nothing else in the toolset can answer the question. If this tool returns an "
+            "'error' field, quote that exact error text verbatim when you tell the user it failed - don't "
+            "paraphrase it away. It's needed for diagnosing the failure, not just for the user's benefit."
         ),
         "input_schema": {
             "type": "object",
