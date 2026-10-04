@@ -221,13 +221,18 @@ def _web_search(query: str, max_results: int = 5):
     # handler do it) so the exact type/message reaches the model in the tool
     # result no matter what - but the model has turned out to paraphrase
     # that detail away rather than relay it verbatim in its answer, so this
-    # also prints a single physical line (no embedded newlines, which is
-    # what earlier multi-line prints lost in Vercel's log capture) as a
-    # second, independent channel to check directly via `vercel logs`.
+    # also prints a single physical line as a second, model-independent
+    # channel to check directly via `vercel logs`. flush=True matters here:
+    # sys.stdout.line_buffering is False in this environment (stdout isn't a
+    # tty), so without it this print sits in a buffer that may never get
+    # flushed before the function suspends between invocations - which is
+    # almost certainly why every earlier diagnostic print() here went
+    # missing from Vercel's log capture while library-level logging (which
+    # flushes on its own) kept showing up.
     try:
         results = mcp_client.search_web(query, max_results=min(max_results, 10))
     except Exception as e:
-        print(f"[web_search error] {type(e).__name__}: {e}".replace("\n", " \\n "))
+        print(f"[web_search error] {type(e).__name__}: {e}".replace("\n", " \\n "), flush=True)
         return {"query": query, "error": f"{type(e).__name__}: {e}"}
     return {"query": query, "results": results}
 
@@ -535,7 +540,7 @@ def dispatch(name: str, arguments: dict):
         # split across stdout/stderr (print() + traceback.print_exc()) - that
         # split lost the actual traceback in Vercel's log capture, which only
         # reliably kept one side.
-        print(f"[agent tool error] {name}({arguments}): {type(e).__name__}: {e}\n{traceback.format_exc()}")
+        print(f"[agent tool error] {name}({arguments}): {type(e).__name__}: {e}\n{traceback.format_exc()}", flush=True)
         return json.dumps({"error": f"{name} failed: {e}"})
     # Anthropic tool_result content must be a string. Slicing raw JSON text
     # can cut mid-structure, handing the model malformed data with no signal
