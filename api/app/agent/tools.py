@@ -217,7 +217,17 @@ def _get_investment_verdict(ticker: str):
 
 
 def _web_search(query: str, max_results: int = 5):
-    return {"query": query, "results": mcp_client.search_web(query, max_results=min(max_results, 10))}
+    # Catches its own exception (rather than letting dispatch()'s generic
+    # handler do it) so the exact type/message reaches the model in the tool
+    # result no matter what - server-side print()/log capture has repeatedly
+    # lost the real detail (Vercel appears to truncate multi-line stdout to
+    # its first line), so this is a more reliable diagnostic channel than
+    # logs for this one tool while that's being worked out.
+    try:
+        results = mcp_client.search_web(query, max_results=min(max_results, 10))
+    except Exception as e:
+        return {"query": query, "error": f"{type(e).__name__}: {e}"}
+    return {"query": query, "results": results}
 
 
 def _get_watchlist():
