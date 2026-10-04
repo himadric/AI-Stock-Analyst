@@ -71,15 +71,15 @@ export default function DashboardLayout({
   ];
 
   const SidebarContent = () => (
-    <div className="h-full flex flex-col">
-      <Link href={`/?ticker=${sidebarTicker}`} className="flex items-center gap-2 mb-8 hover:opacity-80 transition-opacity">
+    <div className="h-full flex flex-col min-h-0">
+      <Link href={`/?ticker=${sidebarTicker}`} className="flex items-center gap-2 mb-8 hover:opacity-80 transition-opacity shrink-0">
         <div className="h-8 w-8 bg-primary rounded-lg flex items-center justify-center">
           <TrendingUp className="h-5 w-5 text-primary-foreground" />
         </div>
         <h1 className="text-xl font-bold">AI Analyst</h1>
       </Link>
 
-      <nav className="flex-1 space-y-2">
+      <nav className="flex-1 min-h-0 space-y-2 overflow-y-auto">
         {navItems.map((item) => {
           const isActive = pathname === item.href;
           // For ETF page, use the current ETF ticker if available, otherwise just link to base
