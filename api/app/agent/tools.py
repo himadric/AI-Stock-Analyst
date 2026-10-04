@@ -219,13 +219,15 @@ def _get_investment_verdict(ticker: str):
 def _web_search(query: str, max_results: int = 5):
     # Catches its own exception (rather than letting dispatch()'s generic
     # handler do it) so the exact type/message reaches the model in the tool
-    # result no matter what - server-side print()/log capture has repeatedly
-    # lost the real detail (Vercel appears to truncate multi-line stdout to
-    # its first line), so this is a more reliable diagnostic channel than
-    # logs for this one tool while that's being worked out.
+    # result no matter what - but the model has turned out to paraphrase
+    # that detail away rather than relay it verbatim in its answer, so this
+    # also prints a single physical line (no embedded newlines, which is
+    # what earlier multi-line prints lost in Vercel's log capture) as a
+    # second, independent channel to check directly via `vercel logs`.
     try:
         results = mcp_client.search_web(query, max_results=min(max_results, 10))
     except Exception as e:
+        print(f"[web_search error] {type(e).__name__}: {e}".replace("\n", " \\n "))
         return {"query": query, "error": f"{type(e).__name__}: {e}"}
     return {"query": query, "results": results}
 
