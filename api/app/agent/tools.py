@@ -14,6 +14,7 @@ POST /api/watchlist endpoint. The agent loop has no code path that can
 write to the watchlist on its own.
 """
 import json
+import traceback
 from urllib.parse import urlparse
 from app.services.finance import FinanceService
 from app.services.sec import SECService
@@ -513,6 +514,14 @@ def dispatch(name: str, arguments: dict):
     except TypeError as e:
         return json.dumps({"error": f"Bad arguments for {name}: {e}"})
     except Exception as e:
+        # A tool failure shouldn't crash the chat turn (the model just sees
+        # the error and explains it to the user), but the full traceback is
+        # worth having server-side - tool_result content only ever carries
+        # str(e), which is too thin to diagnose anything environment-specific
+        # (e.g. the web_search tool's MCP subprocess behaving differently on
+        # Vercel than it does locally).
+        print(f"[agent tool error] {name}({arguments}): {e}")
+        traceback.print_exc()
         return json.dumps({"error": f"{name} failed: {e}"})
     # Anthropic tool_result content must be a string. Slicing raw JSON text
     # can cut mid-structure, handing the model malformed data with no signal
