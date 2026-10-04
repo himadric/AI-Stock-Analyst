@@ -14,6 +14,7 @@ search_web() is a thin anyio.run() bridge over the real async client
 call. anyio.run() starts its own event loop, which is only safe because
 nothing in this call stack already has one running.
 """
+import os
 import sys
 import anyio
 from mcp import Client
@@ -27,12 +28,20 @@ from mcp.client.stdio import StdioServerParameters
 # to sys.executable at all - console-script entry points apparently aren't
 # materialized there the way a normal pip install creates them (confirmed via
 # a real "No such file or directory" error in production). `python -c` only
-# depends on the module being importable by this same interpreter, which is
-# guaranteed - it's a requirements.txt dependency. main() takes no required
-# args; its argparse default is stdio transport, which is what we want.
+# depends on the module being importable by this same interpreter - guaranteed,
+# it's a requirements.txt dependency - EXCEPT that a freshly spawned subprocess
+# starts with a cold sys.path, and on Vercel this process's own sys.path has
+# extra entries injected by Vercel's own bootstrap (not a standard site-packages
+# location a fresh interpreter would pick up on its own), which a plain
+# subprocess doesn't inherit - confirmed via a real "ModuleNotFoundError: No
+# module named 'duckduckgo_mcp_server'" in production despite the parent
+# process importing it fine. Passing PYTHONPATH explicitly makes the child see
+# the same import locations as this already-working parent, regardless of
+# whatever Vercel's bootstrap does to get there.
 _SERVER_PARAMS = StdioServerParameters(
     command=sys.executable,
     args=["-c", "from duckduckgo_mcp_server.server import main; main()"],
+    env={**os.environ, "PYTHONPATH": os.pathsep.join(sys.path)},
 )
 
 
