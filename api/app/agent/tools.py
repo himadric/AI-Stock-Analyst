@@ -23,6 +23,7 @@ from app.services.congress_service import CongressService
 from app.services.simulation import SimulationService
 from app.services.filing_search_service import FilingSearchService
 from app.services.smart_money_service import SmartMoneyService
+from app.agent import mcp_client
 from app.db import db
 
 finance_service = FinanceService()
@@ -214,6 +215,10 @@ def _get_investment_verdict(ticker: str):
     }
 
 
+def _web_search(query: str, max_results: int = 5):
+    return {"query": query, "results": mcp_client.search_web(query, max_results=min(max_results, 10))}
+
+
 def _get_watchlist():
     return list(db.get_db().watchlist.find({}, {"_id": 0}))
 
@@ -251,6 +256,7 @@ TOOL_DISPATCH = {
     "search_filings": _search_filings,
     "find_smart_money_convergence": _find_smart_money_convergence,
     "get_investment_verdict": _get_investment_verdict,
+    "web_search": _web_search,
     "get_watchlist": _get_watchlist,
     "propose_watchlist_add": _propose_watchlist_add,
 }
@@ -456,6 +462,25 @@ TOOLS = [
         },
     },
     {
+        "name": "web_search",
+        "description": (
+            "General web search via a DuckDuckGo MCP server, for anything the other tools in this app don't "
+            "cover: breaking news from the last few hours, macro/Fed/economic questions (get_macro_indicators' "
+            "data is a snapshot, not live), analyst commentary not captured by get_company_news, or any "
+            "non-ticker question entirely. Prefer the other, more specific tools for anything about a "
+            "ticker's price, financials, filings, or sentiment - they're faster and more precise. Use this "
+            "only when nothing else in the toolset can answer the question."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string"},
+                "max_results": {"type": "integer", "default": 5},
+            },
+            "required": ["query"],
+        },
+    },
+    {
         "name": "get_watchlist",
         "description": "The user's current watchlist (tickers and names).",
         "input_schema": {"type": "object", "properties": {}},
@@ -482,13 +507,13 @@ TOOLS = [
 def dispatch(name: str, arguments: dict):
     fn = TOOL_DISPATCH.get(name)
     if not fn:
-        return {"error": f"Unknown tool: {name}"}
+        return json.dumps({"error": f"Unknown tool: {name}"})
     try:
         result = fn(**arguments)
     except TypeError as e:
-        return {"error": f"Bad arguments for {name}: {e}"}
+        return json.dumps({"error": f"Bad arguments for {name}: {e}"})
     except Exception as e:
-        return {"error": f"{name} failed: {e}"}
+        return json.dumps({"error": f"{name} failed: {e}"})
     # Anthropic tool_result content must be a string. Slicing raw JSON text
     # can cut mid-structure, handing the model malformed data with no signal
     # it's incomplete - wrap it instead of silently truncating.

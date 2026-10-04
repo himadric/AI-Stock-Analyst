@@ -12,6 +12,8 @@ dnspython
 vaderSentiment
 anthropic
 pinecone
+mcp
+duckduckgo-mcp-server
 
 lxml
 
