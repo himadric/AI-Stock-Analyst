@@ -519,9 +519,11 @@ def dispatch(name: str, arguments: dict):
         # worth having server-side - tool_result content only ever carries
         # str(e), which is too thin to diagnose anything environment-specific
         # (e.g. the web_search tool's MCP subprocess behaving differently on
-        # Vercel than it does locally).
-        print(f"[agent tool error] {name}({arguments}): {e}")
-        traceback.print_exc()
+        # Vercel than it does locally). One print() to stdout, not two calls
+        # split across stdout/stderr (print() + traceback.print_exc()) - that
+        # split lost the actual traceback in Vercel's log capture, which only
+        # reliably kept one side.
+        print(f"[agent tool error] {name}({arguments}): {type(e).__name__}: {e}\n{traceback.format_exc()}")
         return json.dumps({"error": f"{name} failed: {e}"})
     # Anthropic tool_result content must be a string. Slicing raw JSON text
     # can cut mid-structure, handing the model malformed data with no signal
