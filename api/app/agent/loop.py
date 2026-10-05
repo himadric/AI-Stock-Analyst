@@ -10,6 +10,7 @@ tool-use API is the better fit for it.
 """
 import os
 from app.agent.tools import TOOLS, dispatch
+from app.agent import mcp_client
 
 MODEL = "claude-sonnet-5-5"
 MAX_TOOL_TURNS = 8
@@ -29,10 +30,10 @@ informational analysis, not investment advice, and that you have no ability to p
 call propose_watchlist_add — the user will see a confirmation card and decide. Never say you've \
 "added" something.
 - Keep answers focused. Don't call tools you don't need for the question asked.
-- Prefer the specific data tools (price, financials, filings, news, sentiment) over web_search for anything \
-about a ticker — they're faster and more precise. Reach for web_search only for what they genuinely can't \
-cover: breaking news in the last few hours, current macro/Fed/rate questions, or anything outside a ticker \
-entirely.
+- Prefer the specific data tools (price, financials, filings, news, sentiment) over the general web search \
+tools for anything about a ticker — they're faster and more precise. Reach for web search only for what \
+they genuinely can't cover: breaking news in the last few hours, current macro/Fed/rate questions, or \
+anything outside a ticker entirely. If a search result's content is cut short, you can fetch the full page.
 - If you hit your research budget before finishing, summarize what you found so far rather than \
 leaving the user with nothing.
 """
@@ -63,13 +64,21 @@ def run_agent_turn(messages: list[dict]):
     client = anthropic.Anthropic(api_key=api_key)
     conversation = [{"role": m["role"], "content": m["content"]} for m in messages]
 
+    # Discovered once per user turn, not re-fetched on every one of the (up
+    # to 8) internal tool-call rounds below - mcp_client.discover_tools()
+    # caches its result after the first successful call in this process
+    # anyway, but there's no reason to even check more than once per turn.
+    # Whatever the MCP server exposes right now becomes available to the
+    # model, with no per-tool wrapper code on this side - see mcp_client.py.
+    all_tools = TOOLS + mcp_client.discover_tools()
+
     for turn in range(MAX_TOOL_TURNS):
         try:
             with client.messages.stream(
                 model=MODEL,
                 max_tokens=MAX_TOKENS,
                 system=SYSTEM_PROMPT,
-                tools=TOOLS,
+                tools=all_tools,
                 messages=conversation,
             ) as stream:
                 for event in stream:
