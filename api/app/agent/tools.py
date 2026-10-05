@@ -1,10 +1,11 @@
 """
 Tool registry for the conversational analyst agent (Path A).
 
-Every tool wraps an EXISTING service method — no new data-fetching logic
-lives here. Adding a tool is: write its schema, write a one-line dispatch
-function that calls the service and (if the payload is large) trims it,
-add both to TOOLS / TOOL_DISPATCH. See CLAUDE.md "Adding an agent tool".
+Every tool here wraps an EXISTING service method — no new data-fetching
+logic lives here. Adding one is: write its schema, write a one-line
+dispatch function that calls the service and (if the payload is large)
+trims it, add both to TOOLS / TOOL_DISPATCH. See CLAUDE.md "Adding an
+agent tool".
 
 `propose_watchlist_add` is the one exception: it never touches the
 database. It only signals a proposal, which the chat endpoint surfaces to
@@ -12,6 +13,13 @@ the frontend as a distinct event; the actual write happens when the user
 clicks Confirm, through the existing, already-authenticated
 POST /api/watchlist endpoint. The agent loop has no code path that can
 write to the watchlist on its own.
+
+This module's TOOLS/TOOL_DISPATCH are not the model's complete toolset,
+though - agent/loop.py appends agent/mcp_client.py's discover_tools() to
+TOOLS before every turn, and dispatch() below falls through to
+mcp_client.call_tool() for any name it doesn't recognize. Those tools
+aren't written here at all; they come from whatever an external MCP
+server currently exposes.
 """
 import json
 import traceback
@@ -216,27 +224,6 @@ def _get_investment_verdict(ticker: str):
     }
 
 
-def _web_search(query: str, max_results: int = 5):
-    # Catches its own exception (rather than letting dispatch()'s generic
-    # handler do it) so the exact type/message reaches the model in the tool
-    # result no matter what - but the model has turned out to paraphrase
-    # that detail away rather than relay it verbatim in its answer, so this
-    # also prints a single physical line as a second, model-independent
-    # channel to check directly via `vercel logs`. flush=True matters here:
-    # sys.stdout.line_buffering is False in this environment (stdout isn't a
-    # tty), so without it this print sits in a buffer that may never get
-    # flushed before the function suspends between invocations - which is
-    # almost certainly why every earlier diagnostic print() here went
-    # missing from Vercel's log capture while library-level logging (which
-    # flushes on its own) kept showing up.
-    try:
-        results = mcp_client.search_web(query, max_results=min(max_results, 10))
-    except Exception as e:
-        print(f"[web_search error] {type(e).__name__}: {e}".replace("\n", " \\n "), flush=True)
-        return {"query": query, "error": f"{type(e).__name__}: {e}"}
-    return {"query": query, "results": results}
-
-
 def _get_watchlist():
     return list(db.get_db().watchlist.find({}, {"_id": 0}))
 
@@ -274,7 +261,6 @@ TOOL_DISPATCH = {
     "search_filings": _search_filings,
     "find_smart_money_convergence": _find_smart_money_convergence,
     "get_investment_verdict": _get_investment_verdict,
-    "web_search": _web_search,
     "get_watchlist": _get_watchlist,
     "propose_watchlist_add": _propose_watchlist_add,
 }
@@ -480,27 +466,6 @@ TOOLS = [
         },
     },
     {
-        "name": "web_search",
-        "description": (
-            "General web search via a DuckDuckGo MCP server, for anything the other tools in this app don't "
-            "cover: breaking news from the last few hours, macro/Fed/economic questions (get_macro_indicators' "
-            "data is a snapshot, not live), analyst commentary not captured by get_company_news, or any "
-            "non-ticker question entirely. Prefer the other, more specific tools for anything about a "
-            "ticker's price, financials, filings, or sentiment - they're faster and more precise. Use this "
-            "only when nothing else in the toolset can answer the question. If this tool returns an "
-            "'error' field, quote that exact error text verbatim when you tell the user it failed - don't "
-            "paraphrase it away. It's needed for diagnosing the failure, not just for the user's benefit."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "query": {"type": "string"},
-                "max_results": {"type": "integer", "default": 5},
-            },
-            "required": ["query"],
-        },
-    },
-    {
         "name": "get_watchlist",
         "description": "The user's current watchlist (tickers and names).",
         "input_schema": {"type": "object", "properties": {}},
@@ -526,22 +491,28 @@ TOOLS = [
 
 def dispatch(name: str, arguments: dict):
     fn = TOOL_DISPATCH.get(name)
-    if not fn:
-        return json.dumps({"error": f"Unknown tool: {name}"})
     try:
-        result = fn(**arguments)
+        if fn:
+            result = fn(**arguments)
+        else:
+            # Not one of this file's static tools - try the MCP server,
+            # which is where any dynamically-discovered tool actually lives
+            # (see agent/mcp_client.py; loop.py appends discover_tools()'s
+            # result to the model's tool list before every turn). Wrapped in
+            # a dict so every tool_result has the same JSON-object shape,
+            # regardless of whether it came from here or from an MCP call.
+            result = {"result": mcp_client.call_tool(name, arguments)}
     except TypeError as e:
         return json.dumps({"error": f"Bad arguments for {name}: {e}"})
     except Exception as e:
         # A tool failure shouldn't crash the chat turn (the model just sees
         # the error and explains it to the user), but the full traceback is
         # worth having server-side - tool_result content only ever carries
-        # str(e), which is too thin to diagnose anything environment-specific
-        # (e.g. the web_search tool's MCP subprocess behaving differently on
-        # Vercel than it does locally). One print() to stdout, not two calls
-        # split across stdout/stderr (print() + traceback.print_exc()) - that
-        # split lost the actual traceback in Vercel's log capture, which only
-        # reliably kept one side.
+        # str(e), which is too thin to diagnose anything environment-specific.
+        # One print() to stdout, not two calls split across stdout/stderr
+        # (print() + traceback.print_exc()) - that split has previously lost
+        # the actual traceback in Vercel's log capture, which only reliably
+        # kept one side.
         print(f"[agent tool error] {name}({arguments}): {type(e).__name__}: {e}\n{traceback.format_exc()}", flush=True)
         return json.dumps({"error": f"{name} failed: {e}"})
     # Anthropic tool_result content must be a string. Slicing raw JSON text
