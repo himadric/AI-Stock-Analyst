@@ -28,6 +28,12 @@ AI-powered stock and ETF research dashboard.
 
 *Click the image to watch the chat assistant weigh fundamentals, analyst ratings, smart-money activity, and sentiment into one verdict — on YouTube.*
 
+**MCP integration (dynamic tool discovery)**
+
+[![Watch the MCP integration demo on YouTube](docs/media/mcp-demo-thumbnail.png)](https://youtu.be/15DC-Cexlek)
+
+*Click the image to watch the chat assistant use a connected MCP server's tools — discovered dynamically, not hand-wired — to chain a web search and a page fetch on its own and answer a live Fed-rate question, on YouTube.*
+
 ## About
 
 AI Analyst puts fundamental data, market data and AI-written analysis for a stock or ETF on one dashboard. Search for a ticker to see its key metrics, quarterly financial statements, price charts with technical indicators, analyst forecasts and ownership. You can also run a Monte Carlo DCF valuation, or have Google Gemini summarize SEC filings, flag valuation and risk red flags, and read price charts and macro conditions. A **Stock Analyst Assistant** — a chat bubble in the bottom-right corner of every page (Claude, with real tool access to this app's data) — answers open-ended questions, showing its work as it looks things up. It can search across a ticker's SEC filings semantically, not just read one you point it at, and can suggest watchlist additions, but only ever adds one with your explicit confirmation.
@@ -62,7 +68,7 @@ A chat bubble in the bottom-right corner of every page, backed by a tool-calling
 - **Semantic search across a ticker's SEC filings** (RAG, via Pinecone) — "find mentions of margin pressure across everything ONON has filed" — not just reading one filing you point it at. Filings index automatically the first time they're needed, or you can index one ahead of time with the upload button on the Overview page.
 - **Smart-money convergence** — scans Congress trades, Vanguard's and Munro Partners' latest 13F filings, and sector performance together, and flags tickers where multiple independent sources agree on the same direction.
 - **A full investment verdict** — one request bundles fundamentals, the earnings trend, analyst ratings, the Future Leader score, smart-money activity, and sentiment into a single Buy/Hold/Sell judgment with reasoning (the DCF simulation stays a separate, explicit request, since it's much slower).
-- **Web search** — for anything the data above doesn't cover (breaking news, current macro/Fed questions), it can search the web and read full pages, via a free [DuckDuckGo MCP server](https://github.com/nickclyde/duckduckgo-mcp-server) it runs as its own process over the Model Context Protocol. These tools aren't hand-wired into the app — the agent asks the MCP server what it currently exposes and picks from whatever comes back, so its web capabilities grow automatically if the server's own tools change.
+- **Web search** — for anything the data above doesn't cover (breaking news, current macro/Fed questions), it can search the web and read full pages, via a free [DuckDuckGo MCP server](https://github.com/nickclyde/duckduckgo-mcp-server) it runs as its own process over the Model Context Protocol. These tools aren't hand-wired into the app — the agent asks the MCP server what it currently exposes and picks from whatever comes back, so its web capabilities grow automatically if the server's own tools change. In practice it chains them on its own (search, then fetch a full page when a snippet isn't enough), and moves on gracefully if one source fails.
 - **Watchlist additions** — it can propose adding a ticker, but an addition only happens after you explicitly confirm it.
 
 ### Market-wide views
