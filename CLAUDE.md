@@ -81,6 +81,7 @@ api/
   app/agent/tools.py           analyst-agent tool registry (wraps existing services, doesn't fetch data itself)
   app/agent/loop.py            the Claude tool-use loop behind POST /api/agent/chat
   app/agent/mcp_client.py       MCP client — dynamically discovers and calls tools from the duckduckgo-mcp-server subprocess
+  app/agent/multi_agent.py     multi-agent stock research — a sibling flow to loop.py, not a tool inside it; see "Multi-agent stock research" below
   app/services/filing_search_service.py   RAG over SEC filings (chunk, Pinecone upsert/search; see search_filings tool)
   app/services/smart_money_service.py     cross-references Congress/13F/sector data; see find_smart_money_convergence + get_investment_verdict tools
   utils/create_pinecone_index.py          one-time setup: creates the "sec-filings" Pinecone index
@@ -181,6 +182,14 @@ This is a tool-calling Claude agent, not a template-filling Gemini prompt like `
 3. That's it — `loop.py` and the router don't change. Every tool result is JSON-serialized and capped at 8,000 characters before it goes back to the model.
 4. The one write-capable tool, `propose_watchlist_add`, is intentionally inert — it never touches the database. It only triggers a `watchlist_proposal` SSE event that the frontend renders as a confirm/dismiss card; confirming calls the existing `POST /api/watchlist` endpoint. Don't add a tool that writes directly; keep that confirmation step for anything mutating.
 5. Tools from an MCP server are the one exception to all of the above, and don't follow this recipe at all. `agent/mcp_client.py` spawns the DuckDuckGo MCP server as a subprocess and talks the Model Context Protocol to it; `discover_tools()` asks it what it currently exposes and converts that directly into Anthropic's tool-use schema shape, with no hand-written schema or per-tool function on this side. `loop.py` appends that list to `TOOLS` before every turn, and `dispatch()` (`tools.py`) routes any tool name it doesn't recognize through `mcp_client.call_tool()`. To connect a different or additional MCP server, extend `mcp_client.py`'s discovery/dispatch — don't add entries to `TOOLS`/`TOOL_DISPATCH` for its tools individually.
+
+### 8. Multi-agent stock research
+
+A dedicated action (`POST /api/agent/multi_analysis {ticker}`, triggered by a distinct button in the chat widget — not a tool the main chat agent can call mid-conversation). Four fixed personas (`PERSONAS` in `api/app/agent/multi_agent.py`), each a focused mini tool-loop over a filtered slice of the normal `TOOLS` registry, run **concurrently in threads** (not asyncio — this app is sync throughout) and stream nested progress events (`agent_start`, `agent_tool_start`/`agent_tool_end`, `agent_done`) merged onto one SSE stream via a shared `queue.Queue()`. A final coordinator call synthesizes all four reports into the answer.
+
+To add or change a persona: edit the `PERSONAS` list (`id`, `label`, `tool_names`, `system_prompt`) — `tool_names` must match real names in `tools.py`'s `TOOLS` (validated at runtime by `_tools_for()`, which raises on an unknown name). Each persona's `MAX_TOOL_TURNS`/`MAX_TOKENS` budget needs to be large enough for however many tools it has — a persona with many tools needs more turns, and a turn with many tool results needs enough token budget that thinking doesn't consume the whole response before any visible text comes out (see the `needs_fallback` handling in `_run_subagent` for what catches this if the budget is too tight anyway).
+
+Why this isn't modeled as one more entry in `TOOL_DISPATCH` like a normal tool: `dispatch()` is a simple synchronous call-and-return that 29+ tools rely on. Streaming nested per-subagent progress during a single "call" would mean either turning `dispatch()` into a generator (complicating every other tool's calling convention to serve this one unusual case) or special-casing it anyway — so it's a sibling flow to `run_agent_turn`, with its own endpoint and its own SSE event vocabulary layered on top of the shared `text`/`error`/`done` events, same pattern `mcp_client.py` uses for extending capability without disturbing the existing tool contract.
 
 ## Conventions
 

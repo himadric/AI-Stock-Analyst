@@ -277,6 +277,7 @@ All paths are prefixed with `/api`.
 | `GET /congress/trades?limit` | `CongressService` | live FMP `stable/senate-latest` and `house-latest` | |
 | **agent** | `agent.py` → `agent/loop.py` + `agent/tools.py` | Anthropic Claude | see §4.4 |
 | `POST /agent/chat {messages}` | `run_agent_turn` | tool-use loop over 29 tools wrapping the services above, plus whatever an external MCP server dynamically exposes (3, as of writing) | `text/event-stream`, not JSON |
+| `POST /agent/multi_analysis {ticker}` | `run_multi_agent_analysis` | 4 concurrent subagents (threads), each a mini tool-loop over a filtered slice of the same tool registry | see §4.6; `text/event-stream` with its own nested event types on top of `text`/`error`/`done` |
 | `POST /agent/ingest_filing {ticker,accessionNumber,form,filingDate,link}` | `FilingSearchService.ingest_filing` | SECService + Pinecone | see §4.5; same primitive the `search_filings` tool's lazy fallback uses |
 | `GET /agent/filing_status?ticker&accessionNumbers` | `FilingSearchService.get_indexed_status` | one Pinecone `fetch()` call | `{accessionNumber: bool}`; drives the upload button's disabled/checked state |
 
@@ -410,6 +411,56 @@ ingest_ticker_filings(ticker, max_filings=2)    │
 **Already-indexed status:** right after the Overview page loads a ticker's filings, it calls `GET /agent/filing_status` with all their accession numbers in one request. `get_indexed_status()` checks each filing's first chunk id (`{ticker}-{accessionNumber}-0`) via a single Pinecone `fetch()` call — `fetch()` only returns ids that actually exist, so the response is a plain `{accessionNumber: bool}` map, no per-filing round-trip needed. Already-indexed filings render their upload button permanently disabled with a checkmark, instead of inviting a redundant (harmless but wasteful) re-upload; a fresh upload updates this optimistically client-side the moment it succeeds, without waiting on a second status fetch.
 
 **Verified against the installed SDK, not just its docs** (see CLAUDE.md's Pinecone gotcha for the specific divergences found) — `upsert_records`/`search` are keyword-only, `search`'s `top_k`/`inputs` are flat kwargs, and `Hit` objects use `score` not `_score`.
+
+### 4.6 Multi-agent stock research
+
+A dedicated action, not a conversational tool call — a distinct button in the chat widget triggers `POST /agent/multi_analysis {ticker}`, which streams from `agent/multi_agent.py`'s `run_multi_agent_analysis()` rather than `loop.py`'s `run_agent_turn()`. Deliberately not modeled as one more entry in `TOOL_DISPATCH`: `dispatch()` is a simple synchronous call-and-return that 29+ tools rely on, and this needs to stream nested progress (one live tool trace per subagent, running concurrently) during a single "call" — forcing that through `dispatch()`'s contract would complicate every other tool's calling convention to serve this one unusual case. It's a sibling flow instead, with its own endpoint and its own SSE event vocabulary layered on top of the shared `text`/`error`/`done` events.
+
+```mermaid
+sequenceDiagram
+    participant B as Browser (agent-chat.tsx)
+    participant R as POST /api/agent/multi_analysis
+    participant M as multi_agent.py
+    participant F as Fundamentals
+    participant S as Smart-Money
+    participant N as Sentiment
+    participant L as Filings
+
+    B->>R: {ticker}
+    R->>M: run_multi_agent_analysis(ticker)
+    M-->>B: text: "Dispatching 4 research agents..."
+    par four threads, concurrently
+        M->>F: spawn thread
+        F-->>B: agent_start, agent_tool_start/end ..., agent_done(full_report)
+    and
+        M->>S: spawn thread
+        S-->>B: agent_start, agent_tool_start/end ..., agent_done(full_report)
+    and
+        M->>N: spawn thread
+        N-->>B: agent_start, agent_tool_start/end ..., agent_done(full_report)
+    and
+        M->>L: spawn thread
+        L-->>B: agent_start, agent_tool_start/end ..., agent_done(full_report)
+    end
+    M-->>B: text: "Synthesizing findings..."
+    M->>M: one coordinator call, all 4 reports as context
+    M-->>B: text: final synthesized answer (streamed)
+    M-->>B: done
+```
+
+**Four fixed personas** (`PERSONAS` in `multi_agent.py`), each a focused mini tool-loop over a *filtered slice* of the normal `TOOLS` registry — Fundamentals & Valuation, Smart-Money & Institutional, Sentiment & News (the only persona with `include_mcp_tools: True`, since general web search is only relevant to this angle), and Filings & Risk. The set is deliberately fixed and deterministic, not dynamically decided by an LLM — simpler, cheaper, predictable, and it mirrors how `get_investment_verdict` is already a known bundle rather than an open-ended decision.
+
+**Concurrency without async:** this app is sync throughout (yfinance, the Anthropic SDK's sync client, MCP's `anyio.run()` bridge), so the four subagents run in plain `threading.Thread`s, not asyncio tasks. Each thread pushes its events onto a shared `queue.Queue()`; the main generator just pulls from that queue and yields whatever arrives, in real arrival order, until all four threads have each pushed a terminal `agent_done` - this is what merges four independent, concurrently-running generators into one ordered SSE stream.
+
+**A design tension worth naming:** this runs philosophically against `get_investment_verdict`'s whole reason for existing. That tool was built specifically to *cut* tool calls and token cost (measured: 60.9% savings) by bundling everything into one call instead of letting the agent chain many. Multi-agent research deliberately goes the other way — roughly 5 separate Claude API calls per invocation (4 subagents + 1 coordinator) instead of 1-2 for a normal chat turn. That's an accepted tradeoff here: the feature exists to demonstrate real multi-agent capability (each subagent gets its own focused context and tool subset, and the UI shows four independent live traces running in parallel, not one call pretending to be four), not to minimize cost - it's used occasionally and deliberately, not on every chat turn.
+
+**Two real bugs found in live testing, both about a subagent's final report coming back empty despite its tool calls having succeeded:**
+1. **Turn-budget exhaustion.** `MAX_TOOL_TURNS` originally at 4 was too low for personas with more available tools (fundamentals has 8) - the loop could run out of turns while still mid-research, before ever reaching a turn that writes a conclusion.
+2. **Thinking tokens consuming the entire output budget.** A live test showed a turn with `stop_reason="max_tokens"` where *all* of a 1024-token budget went to invisible thinking tokens, leaving zero for visible text - a technically "finished" turn with nothing to show for it.
+
+Both get caught by the same `needs_fallback` mechanism in `_run_subagent`: if the loop exhausts, or a turn finishes without producing visible text, one more tool-free call is forced, asking the model to write up whatever it already found from the conversation history rather than let the report ship empty.
+
+**UI: Level B, not Level A.** The chat widget renders one card per subagent, each showing its *own* live, nested tool trace (reusing the same spinner/checkmark pattern the single-agent trace already uses, just instantiated once per persona) - not just a single "4 agents ran" summary line. That nesting was a deliberate choice over a simpler flat design: the point of the feature is demonstrating that four agents each independently researched something, which only reads as true if you can see each one's own tool calls, not just that four things happened. Each subagent's full written report is available via an expand/collapse toggle once it finishes, independent of the others.
 
 ---
 
