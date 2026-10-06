@@ -1710,8 +1710,13 @@ class FinanceService:
                 nopat = ebit * (1 - tax_rate)
                 
                 bs = stock.balance_sheet
-                if "Total Stockholder Equity" in bs.index and "Total Debt" in bs.index and "Cash And Cash Equivalents" in bs.index:
-                     invested_capital = (bs.loc["Total Stockholder Equity"].iloc[0] + bs.loc["Total Debt"].iloc[0]) - bs.loc["Cash And Cash Equivalents"].iloc[0]
+                # yfinance renamed this field from "Total Stockholder Equity" to
+                # "Stockholders Equity" at some point - try the current name first,
+                # fall back to the old one in case some tickers still use it (same
+                # pattern already used in get_historical_metrics above).
+                equity_key = "Stockholders Equity" if "Stockholders Equity" in bs.index else "Total Stockholder Equity"
+                if equity_key in bs.index and "Total Debt" in bs.index and "Cash And Cash Equivalents" in bs.index:
+                     invested_capital = (bs.loc[equity_key].iloc[0] + bs.loc["Total Debt"].iloc[0]) - bs.loc["Cash And Cash Equivalents"].iloc[0]
                 else:
                      raise ValueError("BS data missing")
                 
