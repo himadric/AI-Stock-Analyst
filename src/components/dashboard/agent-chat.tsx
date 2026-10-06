@@ -237,7 +237,13 @@ export function AgentChat() {
                                             <ReactMarkdown>{m.content}</ReactMarkdown>
                                         </div>
                                     ) : (
-                                        !m.toolCalls?.length && <Loader2 className="h-4 w-4 animate-spin" />
+                                        // Shown whenever we're still waiting for the first token of the
+                                        // answer, including the gap after the last tool finishes and
+                                        // before Claude starts responding - that gap can be several
+                                        // seconds (model "thinking" time, not visible any other way) and
+                                        // previously showed nothing at all once a tool trace existed,
+                                        // which looked identical to a hang.
+                                        m.streaming && <Loader2 className="h-4 w-4 animate-spin" />
                                     )}
                                 </>
                             ) : (
