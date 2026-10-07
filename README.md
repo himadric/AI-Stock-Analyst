@@ -34,6 +34,12 @@ AI-powered stock and ETF research dashboard.
 
 *Click the image to watch the chat assistant use a connected MCP server's tools — discovered dynamically, not hand-wired — to chain a web search and a page fetch on its own and answer a live Fed-rate question, on YouTube.*
 
+**Multi-agent stock research**
+
+[![Watch the multi-agent research demo on YouTube](docs/media/multi-agent-demo-thumbnail.png)](https://youtu.be/3CLZooMyi1I)
+
+*Click the image to watch four specialist agents — fundamentals, smart-money, sentiment, filings — research the same ticker independently and concurrently, live, then get synthesized into one answer by a coordinator agent, on YouTube.*
+
 ## About
 
 AI Analyst puts fundamental data, market data and AI-written analysis for a stock or ETF on one dashboard. Search for a ticker to see its key metrics, quarterly financial statements, price charts with technical indicators, analyst forecasts and ownership. You can also run a Monte Carlo DCF valuation, or have Google Gemini summarize SEC filings, flag valuation and risk red flags, and read price charts and macro conditions. A **Stock Analyst Assistant** — a chat bubble in the bottom-right corner of every page (Claude, with real tool access to this app's data) — answers open-ended questions, showing its work as it looks things up. It can search across a ticker's SEC filings semantically, not just read one you point it at, and can suggest watchlist additions, but only ever adds one with your explicit confirmation.
