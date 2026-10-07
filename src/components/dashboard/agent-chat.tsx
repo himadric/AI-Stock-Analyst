@@ -1,13 +1,14 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import ReactMarkdown from "react-markdown";
-import { Bot, Check, ChevronDown, ChevronRight, Loader2, Send, Sparkles, User, Wrench, X } from "lucide-react";
+import { Bot, Check, ChevronDown, ChevronRight, Loader2, Send, Sparkles, User, Users, Wrench, X } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { addToWatchlist, streamAgentChat, type AgentChatMessage } from "@/lib/api";
+import { addToWatchlist, streamAgentChat, streamMultiAgentAnalysis, type AgentChatMessage } from "@/lib/api";
 
 interface ToolCallEntry {
     tool: string;
@@ -15,10 +16,20 @@ interface ToolCallEntry {
     status: "running" | "done";
 }
 
+interface SubagentEntry {
+    id: string;
+    label: string;
+    status: "running" | "done";
+    toolCalls: ToolCallEntry[];
+    fullReport?: string;
+    expanded?: boolean;
+}
+
 interface DisplayMessage {
     role: "user" | "assistant";
     content: string;
     toolCalls?: ToolCallEntry[];
+    subagents?: SubagentEntry[];
     streaming?: boolean;
     traceExpanded?: boolean;
 }
@@ -51,6 +62,11 @@ export function AgentChat() {
     const [loading, setLoading] = useState(false);
     const [proposals, setProposals] = useState<WatchlistProposal[]>([]);
     const bottomRef = useRef<HTMLDivElement>(null);
+    // useSearchParams reflects the URL's current ?ticker= regardless of where
+    // this component is mounted in the tree (it's driven by Next's router
+    // context, not file position) - same reasoning usePathname relies on in
+    // stock-analyst-assistant.tsx. Falls back to the app's standard default.
+    const ticker = useSearchParams().get("ticker") || "AAPL";
 
     const scrollToBottom = () => {
         requestAnimationFrame(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }));
@@ -66,6 +82,19 @@ export function AgentChat() {
 
     function toggleTrace(index: number) {
         setMessages((prev) => prev.map((m, i) => (i === index ? { ...m, traceExpanded: !m.traceExpanded } : m)));
+    }
+
+    function toggleSubagentExpand(messageIndex: number, agentId: string) {
+        setMessages((prev) =>
+            prev.map((m, i) =>
+                i === messageIndex
+                    ? {
+                          ...m,
+                          subagents: m.subagents?.map((a) => (a.id === agentId ? { ...a, expanded: !a.expanded } : a)),
+                      }
+                    : m
+            )
+        );
     }
 
     async function send(text: string) {
@@ -130,6 +159,77 @@ export function AgentChat() {
         }
     }
 
+    // Dedicated action, not a regular chat turn - takes just the current
+    // ticker, not the message history. Reuses the same DisplayMessage shape
+    // as send() (so the same markdown/collapse rendering applies to the
+    // final synthesized answer), but builds a `subagents` trace per entry
+    // instead of a flat `toolCalls` trace.
+    async function runMultiAgentAnalysis() {
+        if (loading) return;
+
+        setMessages((prev) => [
+            ...prev,
+            { role: "user", content: `Run full multi-agent analysis on ${ticker}` },
+            { role: "assistant", content: "", subagents: [], streaming: true },
+        ]);
+        setLoading(true);
+        scrollToBottom();
+
+        let assistantText = "";
+
+        function updateSubagent(agentId: string, updater: (a: SubagentEntry) => SubagentEntry) {
+            updateLast((m) => ({
+                ...m,
+                subagents: (m.subagents || []).map((a) => (a.id === agentId ? updater(a) : a)),
+            }));
+        }
+
+        try {
+            for await (const event of streamMultiAgentAnalysis(ticker)) {
+                if (event.type === "text") {
+                    assistantText += event.text;
+                    updateLast((m) => ({ ...m, content: assistantText }));
+                    scrollToBottom();
+                } else if (event.type === "agent_start") {
+                    updateLast((m) => ({
+                        ...m,
+                        subagents: [...(m.subagents || []), { id: event.agent_id, label: event.label, status: "running", toolCalls: [] }],
+                    }));
+                    scrollToBottom();
+                } else if (event.type === "agent_tool_start") {
+                    updateSubagent(event.agent_id, (a) => ({
+                        ...a,
+                        toolCalls: [...a.toolCalls, { tool: event.tool, args: event.args, status: "running" }],
+                    }));
+                    scrollToBottom();
+                } else if (event.type === "agent_tool_end") {
+                    updateSubagent(event.agent_id, (a) => {
+                        const calls = [...a.toolCalls];
+                        for (let j = calls.length - 1; j >= 0; j--) {
+                            if (calls[j].tool === event.tool && calls[j].status === "running") {
+                                calls[j] = { ...calls[j], status: "done" };
+                                break;
+                            }
+                        }
+                        return { ...a, toolCalls: calls };
+                    });
+                } else if (event.type === "agent_done") {
+                    updateSubagent(event.agent_id, (a) => ({ ...a, status: "done", fullReport: event.full_report }));
+                } else if (event.type === "error") {
+                    assistantText += (assistantText ? "\n\n" : "") + `⚠️ ${event.message}`;
+                    updateLast((m) => ({ ...m, content: assistantText }));
+                }
+            }
+        } catch (e) {
+            const errorText = `⚠️ ${e instanceof Error ? e.message : "Something went wrong reaching the analyst agent."}`;
+            updateLast((m) => ({ ...m, content: m.content ? `${m.content}\n\n${errorText}` : errorText }));
+        } finally {
+            updateLast((m) => ({ ...m, streaming: false }));
+            setLoading(false);
+            scrollToBottom();
+        }
+    }
+
     async function confirmProposal(index: number) {
         const proposal = proposals[index];
         try {
@@ -170,6 +270,13 @@ export function AgentChat() {
                                     </button>
                                 ))}
                             </div>
+                            <button
+                                onClick={() => runMultiAgentAnalysis()}
+                                className="flex items-center gap-1.5 w-full text-left text-xs px-2.5 py-2 rounded-md border border-indigo-500/30 bg-indigo-500/5 hover:bg-indigo-500/10 transition-colors"
+                            >
+                                <Users className="h-3.5 w-3.5 text-indigo-500 shrink-0" />
+                                Run full multi-agent analysis on {ticker}
+                            </button>
                         </CardContent>
                     </Card>
                 )}
@@ -230,6 +337,57 @@ export function AgentChat() {
                                                     ))}
                                                 </div>
                                             )}
+                                        </div>
+                                    )}
+                                    {m.subagents && m.subagents.length > 0 && (
+                                        // One card per subagent, stacked (not a grid - the floating
+                                        // widget is only ~384px wide, too narrow for side-by-side
+                                        // columns to stay legible). Each card is a nested version of
+                                        // the single-trace pattern above: its own live spinner/check
+                                        // list while running, then an expandable full report.
+                                        <div className="mb-2 space-y-1.5">
+                                            {m.subagents.map((a) => (
+                                                <div key={a.id} className="rounded-md border bg-background/50 p-2">
+                                                    <div className="flex items-center gap-1.5 text-xs font-medium">
+                                                        {a.status === "running" ? (
+                                                            <Loader2 className="h-3 w-3 animate-spin shrink-0 text-indigo-500" />
+                                                        ) : (
+                                                            <Check className="h-3 w-3 text-green-600 shrink-0" />
+                                                        )}
+                                                        {a.label}
+                                                    </div>
+                                                    {a.toolCalls.length > 0 && (
+                                                        <div className="mt-1 space-y-0.5 pl-4">
+                                                            {a.toolCalls.map((c, ci) => (
+                                                                <div key={ci} className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                                                                    {c.status === "running" ? (
+                                                                        <Loader2 className="h-2.5 w-2.5 animate-spin shrink-0" />
+                                                                    ) : (
+                                                                        <Check className="h-2.5 w-2.5 text-green-600 shrink-0" />
+                                                                    )}
+                                                                    {describeTool(c.tool, c.args)}
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                    {a.status === "done" && a.fullReport && (
+                                                        <>
+                                                            <button
+                                                                onClick={() => toggleSubagentExpand(i, a.id)}
+                                                                className="mt-1 flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                                                            >
+                                                                {a.expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+                                                                {a.expanded ? "Hide full report" : "View full report"}
+                                                            </button>
+                                                            {a.expanded && (
+                                                                <div className="mt-1 pl-4 prose prose-sm dark:prose-invert max-w-none text-xs">
+                                                                    <ReactMarkdown>{a.fullReport}</ReactMarkdown>
+                                                                </div>
+                                                            )}
+                                                        </>
+                                                    )}
+                                                </div>
+                                            ))}
                                         </div>
                                     )}
                                     {m.content ? (
@@ -298,6 +456,17 @@ export function AgentChat() {
                 }}
                 className="flex gap-2 pt-2 border-t"
             >
+                <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    disabled={loading}
+                    onClick={() => runMultiAgentAnalysis()}
+                    title={`Run full multi-agent analysis on ${ticker}`}
+                    aria-label={`Run full multi-agent analysis on ${ticker}`}
+                >
+                    <Users className="h-4 w-4" />
+                </Button>
                 <Input
                     value={input}
                     onChange={(e) => setInput(e.target.value)}

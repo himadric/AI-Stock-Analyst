@@ -6,6 +6,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from app.agent.loop import run_agent_turn
+from app.agent.multi_agent import run_multi_agent_analysis
 from app.agent.tools import filing_search_service
 
 router = APIRouter()
@@ -18,6 +19,10 @@ class ChatMessage(BaseModel):
 
 class ChatRequest(BaseModel):
     messages: List[ChatMessage]
+
+
+class MultiAnalysisRequest(BaseModel):
+    ticker: str
 
 
 class IngestFilingRequest(BaseModel):
@@ -38,6 +43,21 @@ def chat(request: ChatRequest):
         try:
             messages = [m.model_dump() for m in request.messages]
             for event in run_agent_turn(messages):
+                yield f"data: {json.dumps(event)}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+# Sync, same reasoning as /chat above. A dedicated action (see agent-chat.tsx's
+# "Run full multi-agent analysis" button) - not a tool the main chat agent can
+# call mid-conversation. See agent/multi_agent.py's module docstring for why.
+@router.post("/multi_analysis")
+def multi_analysis(request: MultiAnalysisRequest):
+    def event_stream():
+        try:
+            for event in run_multi_agent_analysis(request.ticker):
                 yield f"data: {json.dumps(event)}\n\n"
         except Exception as e:
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"

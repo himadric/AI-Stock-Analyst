@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import { usePathname } from "next/navigation";
 import { MessageCircle, X } from "lucide-react";
 import { AgentChat } from "@/components/dashboard/agent-chat";
@@ -45,7 +45,13 @@ export function StockAnalystAssistant() {
                     </button>
                 </div>
                 <div className="flex-1 min-h-0 overflow-hidden px-3 pb-3 pt-2">
-                    <AgentChat />
+                    {/* AgentChat reads ?ticker= via useSearchParams, which Next requires a
+                        Suspense boundary for - this component is mounted in the root layout,
+                        so it wraps every page including the auto-generated /_not-found, and
+                        skipping this breaks the production build during static generation. */}
+                    <Suspense fallback={null}>
+                        <AgentChat />
+                    </Suspense>
                 </div>
             </div>
 

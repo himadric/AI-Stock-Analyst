@@ -382,6 +382,16 @@ export type AgentEvent =
     | { type: "error"; message: string }
     | { type: "done" };
 
+// Multi-agent stock research (see api/app/agent/multi_agent.py) — a
+// dedicated action, not part of the regular chat turn, so it has its own
+// event vocabulary layered on top of the shared text/error/done events.
+export type MultiAgentEvent =
+    | AgentEvent
+    | { type: "agent_start"; agent_id: string; label: string }
+    | { type: "agent_tool_start"; agent_id: string; tool: string; args: Record<string, unknown> }
+    | { type: "agent_tool_end"; agent_id: string; tool: string }
+    | { type: "agent_done"; agent_id: string; full_report: string };
+
 // Streams the agent's response as it's generated. Not a plain fetch: this
 // endpoint returns text/event-stream, and EventSource can't send the
 // Authorization header apiFetch attaches, so we parse the SSE stream by
@@ -410,6 +420,38 @@ export async function* streamAgentChat(messages: AgentChatMessage[]): AsyncGener
             const line = chunk.split("\n").find((l) => l.startsWith("data: "));
             if (line) {
                 yield JSON.parse(line.slice(6)) as AgentEvent;
+            }
+        }
+    }
+}
+
+// Same hand-rolled SSE parsing as streamAgentChat, for the same reason
+// (EventSource can't carry the Authorization header). Takes a ticker, not a
+// message history — this is a dedicated action, not a conversational turn.
+export async function* streamMultiAgentAnalysis(ticker: string): AsyncGenerator<MultiAgentEvent> {
+    const res = await apiFetch(`/agent/multi_analysis`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ticker }),
+    });
+    if (!res.ok || !res.body) throw new Error("Failed to reach the analyst agent");
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        let sepIndex;
+        while ((sepIndex = buffer.indexOf("\n\n")) !== -1) {
+            const chunk = buffer.slice(0, sepIndex);
+            buffer = buffer.slice(sepIndex + 2);
+            const line = chunk.split("\n").find((l) => l.startsWith("data: "));
+            if (line) {
+                yield JSON.parse(line.slice(6)) as MultiAgentEvent;
             }
         }
     }
