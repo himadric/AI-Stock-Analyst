@@ -8,7 +8,15 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { addToWatchlist, streamAgentChat, streamMultiAgentAnalysis, type AgentChatMessage } from "@/lib/api";
+import {
+    addToWatchlist,
+    streamAgentChat,
+    streamMultiAgentAnalysis,
+    fetchQuotes,
+    addPortfolioPosition,
+    sellPortfolioPosition,
+    type AgentChatMessage,
+} from "@/lib/api";
 
 interface ToolCallEntry {
     tool: string;
@@ -40,6 +48,19 @@ interface WatchlistProposal {
     status: "pending" | "added" | "dismissed" | "error";
 }
 
+// Mirrors WatchlistProposal's gated-confirmation shape exactly - nothing is
+// written to the portfolio until the user clicks Confirm. action-specific
+// statuses ("bought"/"sold") instead of a shared "added" so the card can
+// show the right past-tense label.
+interface TradeProposal {
+    ticker: string;
+    action: "buy" | "sell";
+    reason: string;
+    status: "pending" | "bought" | "sold" | "dismissed" | "error";
+}
+
+const PLACEHOLDER_BUY_SHARES = 10;
+
 const SUGGESTIONS = [
     "Which of my watchlist names look overvalued right now?",
     "Any smart-money convergence on NVDA — Congress, 13F, and the Future Leader score?",
@@ -61,6 +82,7 @@ export function AgentChat() {
     const [input, setInput] = useState("");
     const [loading, setLoading] = useState(false);
     const [proposals, setProposals] = useState<WatchlistProposal[]>([]);
+    const [tradeProposals, setTradeProposals] = useState<TradeProposal[]>([]);
     const bottomRef = useRef<HTMLDivElement>(null);
     // useSearchParams reflects the URL's current ?ticker= regardless of where
     // this component is mounted in the tree (it's driven by Next's router
@@ -215,6 +237,11 @@ export function AgentChat() {
                     });
                 } else if (event.type === "agent_done") {
                     updateSubagent(event.agent_id, (a) => ({ ...a, status: "done", fullReport: event.full_report }));
+                } else if (event.type === "trade_proposal") {
+                    setTradeProposals((prev) => [
+                        ...prev,
+                        { ticker: event.ticker, action: event.action, reason: event.reason, status: "pending" },
+                    ]);
                 } else if (event.type === "error") {
                     assistantText += (assistantText ? "\n\n" : "") + `⚠️ ${event.message}`;
                     updateLast((m) => ({ ...m, content: assistantText }));
@@ -242,6 +269,32 @@ export function AgentChat() {
 
     function dismissProposal(index: number) {
         setProposals((prev) => prev.map((p, i) => (i === index ? { ...p, status: "dismissed" } : p)));
+    }
+
+    // Buy uses today's live price as the cost basis (fetched fresh here, not
+    // whatever price the coordinator saw mid-analysis) and a placeholder
+    // share count - confirmed scope, see PLACEHOLDER_BUY_SHARES. Sell always
+    // uses today's live price too, same as a real trade would.
+    async function confirmTradeProposal(index: number) {
+        const proposal = tradeProposals[index];
+        try {
+            if (proposal.action === "buy") {
+                const quotes = await fetchQuotes([proposal.ticker]);
+                const price = quotes?.[0]?.price;
+                if (!price) throw new Error("Could not fetch a current price");
+                await addPortfolioPosition(proposal.ticker, PLACEHOLDER_BUY_SHARES, price);
+                setTradeProposals((prev) => prev.map((p, i) => (i === index ? { ...p, status: "bought" } : p)));
+            } else {
+                await sellPortfolioPosition(proposal.ticker);
+                setTradeProposals((prev) => prev.map((p, i) => (i === index ? { ...p, status: "sold" } : p)));
+            }
+        } catch {
+            setTradeProposals((prev) => prev.map((p, i) => (i === index ? { ...p, status: "error" } : p)));
+        }
+    }
+
+    function dismissTradeProposal(index: number) {
+        setTradeProposals((prev) => prev.map((p, i) => (i === index ? { ...p, status: "dismissed" } : p)));
     }
 
     return (
@@ -440,6 +493,38 @@ export function AgentChat() {
                                 ) : p.status === "added" ? (
                                     <span className="text-sm text-green-600 flex items-center gap-1 shrink-0">
                                         <Check className="h-4 w-4" /> Added
+                                    </span>
+                                ) : null}
+                            </CardContent>
+                        </Card>
+                    )
+                )}
+
+                {tradeProposals.map((p, i) =>
+                    p.status === "dismissed" ? null : (
+                        <Card key={i} className="border-indigo-500/30">
+                            <CardContent className="p-3 flex items-center justify-between gap-3">
+                                <div>
+                                    <p className="text-sm font-semibold">
+                                        {p.action === "buy" ? "Buy" : "Sell"} <span className="text-indigo-500">{p.ticker}</span>
+                                        {p.action === "buy" ? ` (${PLACEHOLDER_BUY_SHARES} shares)` : " (your full position)"}?
+                                    </p>
+                                    <p className="text-xs text-muted-foreground">
+                                        {p.status === "error" ? "Failed to record the trade — try again from the Portfolio page." : p.reason}
+                                    </p>
+                                </div>
+                                {p.status === "pending" ? (
+                                    <div className="flex gap-2 shrink-0">
+                                        <Button size="sm" variant="outline" onClick={() => dismissTradeProposal(i)}>
+                                            <X className="h-4 w-4" />
+                                        </Button>
+                                        <Button size="sm" onClick={() => confirmTradeProposal(i)}>
+                                            <Check className="h-4 w-4 mr-1" /> {p.action === "buy" ? "Buy" : "Sell"}
+                                        </Button>
+                                    </div>
+                                ) : p.status === "bought" || p.status === "sold" ? (
+                                    <span className="text-sm text-green-600 flex items-center gap-1 shrink-0">
+                                        <Check className="h-4 w-4" /> {p.status === "bought" ? "Bought" : "Sold"}
                                     </span>
                                 ) : null}
                             </CardContent>

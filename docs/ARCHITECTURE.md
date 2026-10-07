@@ -181,6 +181,7 @@ export default Page  →  <Suspense fallback={spinner}>
 | `/sentiment` | Brand sentiment (Yahoo news + YouTube, VADER) | `fetchSentiment` | `sentiment-dashboard` |
 | `/etf` | ETF overview, holdings, sector weights, chart, AI "Quality Core" analysis | `fetchCompanyInfo`, `fetchCompanyNews`, `fetchStockHistory`, `analyzeNews`; `analyzeEtf` (in `etf-ai-analysis`) | `etf-overview`, `etf-holdings`, `sector-allocation`, `etf-ai-analysis`, `stock-chart` |
 | `/watchlist` | Saved tickers with live price/change | `getWatchlist`, `removeFromWatchlist` | `watchlist-table` |
+| `/portfolio` | Demo portfolio: open positions with live gain/loss, closed positions with realized gain/loss (selling moves a position here, never deletes it) | `getPortfolio`, `addPortfolioPosition`, `sellPortfolioPosition`, `deletePortfolioPosition` | `portfolio-table` |
 | `/finder` | Sector map or 3×3 style box of curated tickers with quotes | `fetchMarketMap`, `fetchQuotes` | (inline) |
 | `/heatmap` | S&P 500 treemap coloured by 1m/3m/6m relative strength | `fetch('/api/heatmap/relative-strength')` (Next route → Mongo) | `heatmap/SnpHeatmap` |
 | `/institutional` | Vanguard and Munro Partners 13F top buys/sells (tabs) | `fetchVanguardTrades`, `fetchMunroTrades` | `vanguard-tracker`, `munro-tracker` |
@@ -269,6 +270,11 @@ All paths are prefixed with `/api`.
 | `GET /watchlist` | — | Mongo `watchlist` + yfinance `fast_info` per ticker | |
 | `POST /watchlist {ticker}` | — | yfinance `.info` for name | idempotent |
 | `DELETE /watchlist/{ticker}` | — | Mongo | 404 if absent |
+| **portfolio** | router talks to Mongo directly, same pattern as watchlist | | demo portfolio, not a real brokerage link; see §4.6 |
+| `GET /portfolio` | — | Mongo `portfolio` + `FinanceService.get_quotes()` | `{open: [...], closed: [...]}`, each enriched with live price / gain-loss |
+| `POST /portfolio {ticker,shares,cost_basis}` | — | Mongo | 400 if an open position already exists for that ticker |
+| `POST /portfolio/{ticker}/sell` | — | Mongo + live quote | sets `status: "closed"` + `sell_price`/`sell_date` — never deletes the document |
+| `DELETE /portfolio/{position_id}` | — | Mongo | for correcting a mistaken manual entry, not for selling |
 | **trackers** | | | |
 | `GET /vanguard/trades?limit` | `InstitutionService.get_vanguard_trades` | Mongo `vanguard_tracker` → fallback live 13F diff | |
 | `GET /munro/trades?limit` | `InstitutionService.get_munro_trades` | Mongo `munro_tracker` → fallback live | |
@@ -374,7 +380,7 @@ Nothing in this codebase names `search`, `fetch_content`, or `expand_link` direc
 
 **Model split:** Claude (`claude-sonnet-5-5`, direct `anthropic` SDK, tool use), not Gemini — the one-shot `AIService` prompts are unaffected and unchanged. Requires its own `ANTHROPIC_API_KEY` in `api/.env` / Vercel, separate from `GEMINI_API_KEY`.
 
-**Safety boundaries:** read-only except the gated watchlist proposal above; no trading, no brokerage integration, none planned. Capped at 8 tool-call turns and 2,048 output tokens per turn (`MAX_TOOL_TURNS`, `MAX_TOKENS` in `loop.py`) — both a UX bound (interactive requests need to finish quickly) and a cost bound (each turn is a billed Claude API call). Sits behind `require_auth` like every other router — no special-casing.
+**Safety boundaries:** read-only except two gated write actions — the watchlist proposal above, and the position-aware trade proposal the multi-agent coordinator can make (§4.6) — both confirm-before-write, neither auto-executes. No real trading or brokerage integration, none planned; the portfolio these trade proposals write to is a demo/fake one (§4.6), not connected to any real account. Capped at 8 tool-call turns and 2,048 output tokens per turn (`MAX_TOOL_TURNS`, `MAX_TOKENS` in `loop.py`) — both a UX bound (interactive requests need to finish quickly) and a cost bound (each turn is a billed Claude API call). Sits behind `require_auth` like every other router — no special-casing.
 
 ### 4.5 RAG over SEC filings
 
@@ -462,6 +468,16 @@ Both get caught by the same `needs_fallback` mechanism in `_run_subagent`: if th
 
 **UI: Level B, not Level A.** The chat widget renders one card per subagent, each showing its *own* live, nested tool trace (reusing the same spinner/checkmark pattern the single-agent trace already uses, just instantiated once per persona) - not just a single "4 agents ran" summary line. That nesting was a deliberate choice over a simpler flat design: the point of the feature is demonstrating that four agents each independently researched something, which only reads as true if you can see each one's own tool calls, not just that four things happened. Each subagent's full written report is available via an expand/collapse toggle once it finishes, independent of the others.
 
+**Position-aware verdict and the gated trade proposal.** Before the coordinator's synthesis call, `run_multi_agent_analysis()` looks up whether the user holds an open position in this ticker (`_get_open_position()`, one Mongo query against the `portfolio` collection - §4.7) and passes it to the coordinator as plain text context, the same way the four subagent reports already are. `COORDINATOR_SYSTEM_PROMPT` asks for an explicit hold-vs-sell read (framed against the actual cost basis and gain/loss) if a position exists, or buy-vs-pass if not - and to call a new `propose_trade(ticker, action, reason)` tool only when the synthesis genuinely supports a buy or sell, not on every analysis. This is read, not a free-text pattern the backend parses: `propose_trade` is a real Anthropic tool-use call, mirroring `propose_watchlist_add`'s shape exactly, and - like that tool - it's terminal (the model's full synthesized text and the tool call can arrive in the same response; there's no result to feed back for the conversation to continue). The backend reads the `tool_use` block straight off `final_message.content` after streaming and emits a `trade_proposal` SSE event; nothing is written to the portfolio until the user confirms the resulting card. Verified live, twice: a synthetic, deliberately one-sided bullish scenario correctly produced a `propose_trade(action="buy")` call with a grounded reason, and two real runs against genuinely mixed evidence correctly produced *no* tool call, with the coordinator explaining in its text why it wasn't proposing a trade - confirming the "only when it's warranted" instruction actually holds, not just that the tool fires on request.
+
+### 4.7 Portfolio
+
+A demo portfolio, not a real brokerage link - MongoDB collection `portfolio`, one document per position, read and written directly by `app/api/portfolio.py` (same router-talks-to-Mongo-directly shape as `watchlist.py`, not a separate service class, since the logic here is comparably simple: CRUD plus live-quote enrichment via the already-parallelized `FinanceService.get_quotes()`). Simplification: **at most one open position per ticker at a time**, which is what keeps `POST /portfolio/{ticker}/sell`'s lookup unambiguous (there's at most one open document to close) rather than needing to track multiple lots.
+
+**Selling moves a position, never deletes it.** The sell endpoint sets `status: "closed"` plus `sell_price`/`sell_date` on the same document; the Portfolio page's Closed Positions table reads directly off that to show buy price, sell price, sell date, and realized gain/loss. `DELETE /portfolio/{id}` exists separately, for correcting a mistaken manual entry - a different action from selling, and the only code path that actually removes a document.
+
+This is also where the multi-agent coordinator's position-aware verdict (§4.6) gets its data, and where a confirmed trade proposal actually writes: buy confirms call `POST /portfolio` with a placeholder share count (`PLACEHOLDER_BUY_SHARES` in `agent-chat.tsx`) at the ticker's live price fetched fresh at confirm time; sell confirms call `POST /portfolio/{ticker}/sell`, which independently fetches its own live price rather than trusting any price the coordinator saw mid-analysis.
+
 ---
 
 ## 5. Key algorithms
@@ -503,6 +519,7 @@ Most collections hold **precomputed snapshot documents** that batch jobs replace
 | Collection | Document shape | Writer | Reader |
 |---|---|---|---|
 | `watchlist` | `{ticker, name}` per ticker | `POST /watchlist` | `GET /watchlist` |
+| `portfolio` | `{ticker, shares, cost_basis, purchase_date, status: "open"\|"closed", sell_price, sell_date}` per position - demo portfolio, not a real brokerage link; see §4.7. Selling updates the same document in place (`status`, `sell_price`, `sell_date`), never deletes it | `POST /portfolio`, `POST /portfolio/{ticker}/sell` (manual or confirmed trade proposal, §4.6) | `GET /portfolio` |
 | `leaderboard` | `{_id: "small_cap"\|"mid_cap"\|"large_cap", companies: [{ticker, rank, total_score, factors}], last_updated}` | `utils/generate_leaderboard.py` (every 12 h), `utils/migrate_mongo.py` (one-off) | `FinanceService.get_rankings` |
 | `govt_contracts` | `{_id: "contractors", companies: [...]}` | `utils/generate_govt_contracts.py` (daily) | `get_govt_rankings` |
 | `vanguard_tracker`, `munro_tracker` | two docs: `{type: "buy"\|"sell", data: [...100], report_date, prev_report_date}` | `scripts/update_vanguard_data.py` (weekly), `scripts/update_munro_data.py` (manual, no workflow) | `InstitutionService._get_from_db` |

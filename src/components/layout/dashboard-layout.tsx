@@ -1,6 +1,6 @@
 "use client";
 
-import { BarChart3, FileText, Globe, Home, LayoutDashboard, Search, TrendingUp, Target, Users, Menu, Trophy, Shield, Landmark, Building2 } from "lucide-react";
+import { BarChart3, FileText, Globe, Home, LayoutDashboard, Search, TrendingUp, Target, Users, Menu, Trophy, Shield, Landmark, Building2, Wallet } from "lucide-react";
 import { useState, useEffect, ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
@@ -60,6 +60,7 @@ export default function DashboardLayout({
     { name: "Brand Sentiment", href: "/sentiment", icon: Users },
     { name: "ETF Analysis", href: "/etf", icon: BarChart3 },
     { name: "Watchlist", href: "/watchlist", icon: FileText },
+    { name: "Portfolio", href: "/portfolio", icon: Wallet },
     { name: "Finder", href: "/finder", icon: Search },
     { name: "Market Heatmap", href: "/heatmap", icon: LayoutDashboard }, 
     { name: "Institutional Trackers", href: "/institutional", icon: Building2 },

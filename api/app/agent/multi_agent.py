@@ -21,6 +21,7 @@ import threading
 
 from app.agent.tools import TOOLS, dispatch
 from app.agent import mcp_client
+from app.db import db
 
 MODEL = "claude-sonnet-5-5"
 MAX_TOOL_TURNS = 6  # lower than the main loop's 8 - each subagent's job is narrower
@@ -118,7 +119,44 @@ researched the same ticker and written their own report. Your job is to synthesi
 into one cohesive answer for the user - not just concatenate them. Note where the angles agree or \
 reinforce each other, and flag it plainly if they point in different directions. Keep it readable: use \
 the four angles as structure, but write it as one coherent piece, not four pasted-together sections. \
-This is informational analysis, not investment advice, and you have no ability to place trades."""
+This is informational analysis, not investment advice, and you have no ability to place trades.
+
+If the user's current position in this ticker is given to you below, end your synthesis with an \
+explicit recommendation and call propose_trade to surface it: if they hold a position, frame it as \
+hold-vs-sell against their actual cost basis and gain/loss; if they don't hold one, frame it as an \
+initial buy-or-pass decision. Call propose_trade only when your synthesis actually supports a buy or \
+sell - if the right call is to hold or do nothing, say so in your text and don't call the tool. \
+propose_trade only shows the user a confirmation card; it never trades anything itself."""
+
+PROPOSE_TRADE_TOOL = {
+    "name": "propose_trade",
+    "description": (
+        "Propose a buy or sell for a ticker, based on the synthesized research. This does NOT execute "
+        "anything - it only shows the user a confirmation card, exactly like propose_watchlist_add does "
+        "for the watchlist. Use this instead of claiming you've bought or sold something. Only call it "
+        "when the synthesis actually supports a buy or sell."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "ticker": {"type": "string"},
+            "action": {"type": "string", "enum": ["buy", "sell"]},
+            "reason": {"type": "string", "description": "One or two sentences on why, grounded in the synthesis."},
+        },
+        "required": ["ticker", "action", "reason"],
+    },
+}
+
+
+def _get_open_position(ticker: str) -> dict | None:
+    try:
+        position = db.get_db().portfolio.find_one({"ticker": ticker.upper(), "status": "open"})
+    except Exception as e:
+        print(f"[multi_agent] portfolio lookup failed for {ticker}: {type(e).__name__}: {e}", flush=True)
+        return None
+    if not position:
+        return None
+    return {"shares": position["shares"], "cost_basis": position["cost_basis"]}
 
 
 def _get_client():
@@ -237,8 +275,14 @@ def run_multi_agent_analysis(ticker: str):
       {"type": "agent_tool_end", "agent_id": ..., "tool": ...}
       {"type": "agent_done", "agent_id": ..., "full_report": "..."}
       {"type": "text", "text": "..."}          (coordinator narration + final synthesis)
+      {"type": "trade_proposal", "ticker": ..., "action": "buy"|"sell", "reason": "..."}
       {"type": "error", "message": "..."}
       {"type": "done"}
+
+    trade_proposal is gated the same way watchlist_proposal already is: it
+    only signals a proposal, surfaced as a confirm/dismiss card - nothing is
+    written to the portfolio until the user confirms, via the existing
+    POST /api/portfolio and POST /api/portfolio/{ticker}/sell endpoints.
     """
     client, error = _get_client()
     if error:
@@ -272,18 +316,41 @@ def run_multi_agent_analysis(ticker: str):
     report_block = "\n\n".join(
         f"## {p['label']}\n{reports.get(p['id'], '(no report)')}" for p in PERSONAS
     )
+    position = _get_open_position(ticker)
+    position_block = (
+        f"\n\nThe user currently holds {position['shares']} shares of {ticker.upper()} at a cost basis "
+        f"of ${position['cost_basis']:.2f}/share."
+        if position else
+        f"\n\nThe user does not currently hold {ticker.upper()}."
+    )
     try:
         with client.messages.stream(
             model=MODEL,
             max_tokens=MAX_TOKENS * 2,
             system=COORDINATOR_SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": f"Ticker: {ticker.upper()}\n\n{report_block}"}],
+            tools=[PROPOSE_TRADE_TOOL],
+            messages=[{"role": "user", "content": f"Ticker: {ticker.upper()}\n\n{report_block}{position_block}"}],
         ) as stream:
             for event in stream:
                 if event.type == "text":
                     yield {"type": "text", "text": event.text}
+            final_message = stream.get_final_message()
     except Exception as e:
         yield {"type": "error", "message": f"Coordinator synthesis failed: {e}"}
         return
+
+    # propose_trade is terminal - unlike a normal tool call, nothing needs to
+    # be fed back for the conversation to continue, so this just reads the
+    # tool_use block straight off the final message rather than looping
+    # through dispatch(). Mirrors how loop.py surfaces propose_watchlist_add.
+    for block in final_message.content:
+        if block.type == "tool_use" and block.name == "propose_trade":
+            args = block.input or {}
+            yield {
+                "type": "trade_proposal",
+                "ticker": (args.get("ticker") or ticker).upper(),
+                "action": args.get("action"),
+                "reason": args.get("reason", ""),
+            }
 
     yield {"type": "done"}

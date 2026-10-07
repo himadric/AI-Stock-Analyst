@@ -66,6 +66,7 @@ src/
   components/layout/dashboard-layout.tsx   sidebar nav + header ticker search
   components/dashboard/stock-analyst-assistant.tsx   the chat widget's bubble+popup chrome — mounted in app/layout.tsx, not a page (see Gotchas)
   components/dashboard/agent-chat.tsx      the chat transcript itself (used by the widget above)
+  components/dashboard/portfolio-table.tsx  open/closed position tables for app/portfolio/page.tsx
   components/dashboard/*.tsx  feature components (kebab-case files, named exports)
   components/ui/*.tsx         shadcn primitives — generated, edit sparingly
   lib/api.ts                  ALL backend fetch wrappers live here
@@ -82,6 +83,7 @@ api/
   app/agent/loop.py            the Claude tool-use loop behind POST /api/agent/chat
   app/agent/mcp_client.py       MCP client — dynamically discovers and calls tools from the duckduckgo-mcp-server subprocess
   app/agent/multi_agent.py     multi-agent stock research — a sibling flow to loop.py, not a tool inside it; see "Multi-agent stock research" below
+  app/api/portfolio.py         demo portfolio CRUD + the position-aware trade-proposal endpoints multi_agent.py's coordinator writes through
   app/services/filing_search_service.py   RAG over SEC filings (chunk, Pinecone upsert/search; see search_filings tool)
   app/services/smart_money_service.py     cross-references Congress/13F/sector data; see find_smart_money_convergence + get_investment_verdict tools
   utils/create_pinecone_index.py          one-time setup: creates the "sec-filings" Pinecone index
@@ -190,6 +192,14 @@ A dedicated action (`POST /api/agent/multi_analysis {ticker}`, triggered by a di
 To add or change a persona: edit the `PERSONAS` list (`id`, `label`, `tool_names`, `system_prompt`) — `tool_names` must match real names in `tools.py`'s `TOOLS` (validated at runtime by `_tools_for()`, which raises on an unknown name). Each persona's `MAX_TOOL_TURNS`/`MAX_TOKENS` budget needs to be large enough for however many tools it has — a persona with many tools needs more turns, and a turn with many tool results needs enough token budget that thinking doesn't consume the whole response before any visible text comes out (see the `needs_fallback` handling in `_run_subagent` for what catches this if the budget is too tight anyway).
 
 Why this isn't modeled as one more entry in `TOOL_DISPATCH` like a normal tool: `dispatch()` is a simple synchronous call-and-return that 29+ tools rely on. Streaming nested per-subagent progress during a single "call" would mean either turning `dispatch()` into a generator (complicating every other tool's calling convention to serve this one unusual case) or special-casing it anyway — so it's a sibling flow to `run_agent_turn`, with its own endpoint and its own SSE event vocabulary layered on top of the shared `text`/`error`/`done` events, same pattern `mcp_client.py` uses for extending capability without disturbing the existing tool contract.
+
+### 9. Portfolio and position-aware trade proposals
+
+A demo portfolio, not a real brokerage link — `app/api/portfolio.py` (Mongo collection `portfolio`, one document per position) follows the same router-talks-to-Mongo-directly pattern `watchlist.py` already uses, not a separate service class, since it's a comparably simple shape (CRUD plus live-quote enrichment via the already-parallelized `FinanceService.get_quotes()`). One simplification: **at most one open position per ticker at a time** — keeps the sell flow a simple ticker-keyed lookup rather than needing to track multiple lots.
+
+**Selling never deletes a position.** `POST /portfolio/{ticker}/sell` sets `status: "closed"` plus `sell_price`/`sell_date` on the same document — the Portfolio page's "Closed Positions" section reads directly off that, showing buy price, sell price, and realized gain/loss. If you're adding a feature that touches a position's lifecycle, preserve this: don't add a code path that `DELETE`s an open position as part of closing it. `DELETE /portfolio/{id}` exists separately, for correcting a mistaken manual entry — a different action from selling.
+
+**How the multi-agent coordinator becomes position-aware:** before its synthesis call, `run_multi_agent_analysis()` looks up whether an open position exists for the ticker (`_get_open_position()` in `multi_agent.py`) and includes it as plain text context in the coordinator's prompt — the same way the four subagent reports are already passed in, not a new tool call. `COORDINATOR_SYSTEM_PROMPT` then asks for an explicit hold-vs-sell (if held) or buy-vs-pass (if not) read, and to call `propose_trade` only when the synthesis actually supports a buy or sell — not on every analysis. This mirrors `propose_watchlist_add` exactly: the model proposes via a real, structured tool call (never free-text parsing), and the result is a `trade_proposal` SSE event the frontend renders as a confirm/dismiss card. Nothing is written to the portfolio until the user confirms, via the same `POST /portfolio` / `POST /portfolio/{ticker}/sell` endpoints a manual edit would use. Confirmed buys use a placeholder share count (`PLACEHOLDER_BUY_SHARES` in `agent-chat.tsx`) at the ticker's live price, fetched fresh at confirm time — not whatever price the coordinator happened to see mid-analysis.
 
 ## Conventions
 
