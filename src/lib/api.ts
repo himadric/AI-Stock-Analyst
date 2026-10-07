@@ -368,6 +368,54 @@ export async function removeFromWatchlist(ticker: string) {
     return res.json();
 }
 
+// Portfolio — a demo/fake portfolio, not a real brokerage link. Selling
+// never deletes a position; it moves it into the closed section (see
+// api/app/api/portfolio.py).
+export interface PortfolioPosition {
+    id: string;
+    ticker: string;
+    shares: number;
+    cost_basis: number;
+    purchase_date: string;
+    status: "open" | "closed";
+    sell_price: number | null;
+    sell_date: string | null;
+    current_price?: number | null;
+    market_value?: number | null;
+    gain_loss?: number | null;
+    gain_loss_percent?: number | null;
+    realized_gain_loss?: number;
+    realized_gain_loss_percent?: number;
+}
+
+export async function getPortfolio(): Promise<{ open: PortfolioPosition[]; closed: PortfolioPosition[] }> {
+    const res = await apiFetch(`/portfolio`);
+    if (!res.ok) throw new Error("Failed to fetch portfolio");
+    return res.json();
+}
+
+export async function addPortfolioPosition(ticker: string, shares: number, costBasis: number) {
+    const res = await apiFetch(`/portfolio`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ticker, shares, cost_basis: costBasis }),
+    });
+    if (!res.ok) throw new Error((await res.json().catch(() => null))?.detail || "Failed to add position");
+    return res.json();
+}
+
+export async function sellPortfolioPosition(ticker: string) {
+    const res = await apiFetch(`/portfolio/${ticker}/sell`, { method: "POST" });
+    if (!res.ok) throw new Error((await res.json().catch(() => null))?.detail || "Failed to sell position");
+    return res.json();
+}
+
+export async function deletePortfolioPosition(id: string) {
+    const res = await apiFetch(`/portfolio/${id}`, { method: "DELETE" });
+    if (!res.ok) throw new Error("Failed to remove position");
+    return res.json();
+}
+
 // Analyst agent (Path A — interactive chat only; see docs/ARCHITECTURE.md)
 export interface AgentChatMessage {
     role: "user" | "assistant";
@@ -390,7 +438,8 @@ export type MultiAgentEvent =
     | { type: "agent_start"; agent_id: string; label: string }
     | { type: "agent_tool_start"; agent_id: string; tool: string; args: Record<string, unknown> }
     | { type: "agent_tool_end"; agent_id: string; tool: string }
-    | { type: "agent_done"; agent_id: string; full_report: string };
+    | { type: "agent_done"; agent_id: string; full_report: string }
+    | { type: "trade_proposal"; ticker: string; action: "buy" | "sell"; reason: string };
 
 // Streams the agent's response as it's generated. Not a plain fetch: this
 // endpoint returns text/event-stream, and EventSource can't send the

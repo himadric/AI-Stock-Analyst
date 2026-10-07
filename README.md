@@ -65,6 +65,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how it's built and [CLAUDE.
 - **Brand Sentiment** — sentiment scored from news and YouTube reviews (VADER), with a net sentiment score, pos/neu/neg breakdown, emotion tags, and trending keywords.
 - **ETF Analysis** — holdings, sector weightings, and an AI "Quality Core" assessment for a 10-year horizon.
 - **Watchlist** — your saved tickers with live price and day change.
+- **Portfolio** — a demo portfolio (not a real brokerage link): open positions with live gain/loss against your cost basis, and closed positions showing buy price, sell price, and realized gain/loss (selling moves a position here, it's never deleted).
 
 ### Stock Analyst Assistant (AI chat)
 
@@ -76,7 +77,7 @@ A chat bubble in the bottom-right corner of every page, backed by a tool-calling
 - **A full investment verdict** — one request bundles fundamentals, the earnings trend, analyst ratings, the Future Leader score, smart-money activity, and sentiment into a single Buy/Hold/Sell judgment with reasoning (the DCF simulation stays a separate, explicit request, since it's much slower).
 - **Web search** — for anything the data above doesn't cover (breaking news, current macro/Fed questions), it can search the web and read full pages, via a free [DuckDuckGo MCP server](https://github.com/nickclyde/duckduckgo-mcp-server) it runs as its own process over the Model Context Protocol. These tools aren't hand-wired into the app — the agent asks the MCP server what it currently exposes and picks from whatever comes back, so its web capabilities grow automatically if the server's own tools change. In practice it chains them on its own (search, then fetch a full page when a snippet isn't enough), and moves on gracefully if one source fails.
 - **Watchlist additions** — it can propose adding a ticker, but an addition only happens after you explicitly confirm it.
-- **Multi-agent research** — a dedicated action that dispatches four specialist analysts (fundamentals & valuation, smart-money & institutional, sentiment & news, filings & risk) at once, each independently researching the ticker with its own focused tool access. You can watch all four work in parallel, live, each with its own tool trace, then a coordinator synthesizes their findings — including where they agree or point in different directions — into one answer.
+- **Multi-agent research** — a dedicated action that dispatches four specialist analysts (fundamentals & valuation, smart-money & institutional, sentiment & news, filings & risk) at once, each independently researching the ticker with its own focused tool access. You can watch all four work in parallel, live, each with its own tool trace, then a coordinator synthesizes their findings — including where they agree or point in different directions — into one answer. If you hold a position in the ticker, the synthesis weighs it against your actual cost basis and can propose a buy or sell — shown as a confirm/dismiss card, exactly like the watchlist proposal. Nothing trades until you confirm it.
 
 ### Market-wide views
 
