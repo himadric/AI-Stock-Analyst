@@ -52,11 +52,21 @@ interface WatchlistProposal {
 // written to the portfolio until the user clicks Confirm. action-specific
 // statuses ("bought"/"sold") instead of a shared "added" so the card can
 // show the right past-tense label.
+//
+// Trades under AUTO_EXECUTE_THRESHOLD (see multi_agent.py) skip this
+// confirm/dismiss step entirely - they arrive as a trade_executed event,
+// already bought/sold by the time the frontend sees them. `auto` marks
+// those so the card can say "auto-executed" instead of implying a button
+// was clicked; `shares`/`price` are only populated for that case, since a
+// human-confirmed trade's price is fetched live at confirm time instead.
 interface TradeProposal {
     ticker: string;
     action: "buy" | "sell";
     reason: string;
     status: "pending" | "bought" | "sold" | "dismissed" | "error";
+    auto?: boolean;
+    shares?: number;
+    price?: number;
 }
 
 const PLACEHOLDER_BUY_SHARES = 10;
@@ -241,6 +251,19 @@ export function AgentChat() {
                     setTradeProposals((prev) => [
                         ...prev,
                         { ticker: event.ticker, action: event.action, reason: event.reason, status: "pending" },
+                    ]);
+                } else if (event.type === "trade_executed") {
+                    setTradeProposals((prev) => [
+                        ...prev,
+                        {
+                            ticker: event.ticker,
+                            action: event.action,
+                            reason: event.reason,
+                            status: event.action === "buy" ? "bought" : "sold",
+                            auto: true,
+                            shares: event.shares,
+                            price: event.price,
+                        },
                     ]);
                 } else if (event.type === "error") {
                     assistantText += (assistantText ? "\n\n" : "") + `⚠️ ${event.message}`;
@@ -510,7 +533,11 @@ export function AgentChat() {
                                         {p.action === "buy" ? ` (${PLACEHOLDER_BUY_SHARES} shares)` : " (your full position)"}?
                                     </p>
                                     <p className="text-xs text-muted-foreground">
-                                        {p.status === "error" ? "Failed to record the trade — try again from the Portfolio page." : p.reason}
+                                        {p.status === "error"
+                                            ? "Failed to record the trade — try again from the Portfolio page."
+                                            : p.auto
+                                              ? `Auto-executed (under $1,000, no confirmation needed) — ${p.shares} shares at $${p.price?.toFixed(2)}. ${p.reason}`
+                                              : p.reason}
                                     </p>
                                 </div>
                                 {p.status === "pending" ? (

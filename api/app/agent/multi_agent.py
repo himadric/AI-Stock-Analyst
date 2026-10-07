@@ -21,7 +21,20 @@ import threading
 
 from app.agent.tools import TOOLS, dispatch
 from app.agent import mcp_client
-from app.db import db
+from app.services.finance import FinanceService
+from app.services.portfolio_service import PortfolioService
+
+finance_service = FinanceService()
+portfolio_service = PortfolioService()
+
+# Trades below this dollar amount execute immediately, no confirmation card -
+# above it, the existing gated trade_proposal flow applies. The agent always
+# buys a fixed PLACEHOLDER_BUY_SHARES and always sells a full held position
+# (never partial - see portfolio.py's "at most one open position per ticker"),
+# so this threshold is really a gate on the ticker's price (buys) or position
+# size (sells), not on quantity.
+AUTO_EXECUTE_THRESHOLD = 1000
+PLACEHOLDER_BUY_SHARES = 10  # keep in sync with agent-chat.tsx's constant of the same name
 
 MODEL = "claude-sonnet-5-5"
 MAX_TOOL_TURNS = 6  # lower than the main loop's 8 - each subagent's job is narrower
@@ -150,13 +163,10 @@ PROPOSE_TRADE_TOOL = {
 
 def _get_open_position(ticker: str) -> dict | None:
     try:
-        position = db.get_db().portfolio.find_one({"ticker": ticker.upper(), "status": "open"})
+        return portfolio_service.get_open_position(ticker)
     except Exception as e:
         print(f"[multi_agent] portfolio lookup failed for {ticker}: {type(e).__name__}: {e}", flush=True)
         return None
-    if not position:
-        return None
-    return {"shares": position["shares"], "cost_basis": position["cost_basis"]}
 
 
 def _get_client():
@@ -276,6 +286,7 @@ def run_multi_agent_analysis(ticker: str):
       {"type": "agent_done", "agent_id": ..., "full_report": "..."}
       {"type": "text", "text": "..."}          (coordinator narration + final synthesis)
       {"type": "trade_proposal", "ticker": ..., "action": "buy"|"sell", "reason": "..."}
+      {"type": "trade_executed", "ticker": ..., "action": "buy"|"sell", "shares": ..., "price": ..., "reason": "..."}
       {"type": "error", "message": "..."}
       {"type": "done"}
 
@@ -283,6 +294,13 @@ def run_multi_agent_analysis(ticker: str):
     only signals a proposal, surfaced as a confirm/dismiss card - nothing is
     written to the portfolio until the user confirms, via the existing
     POST /api/portfolio and POST /api/portfolio/{ticker}/sell endpoints.
+
+    trade_executed is different: it's already happened by the time this event
+    is yielded. Trades under AUTO_EXECUTE_THRESHOLD skip the confirmation
+    step entirely - the dollar amount is small enough that asking adds
+    friction without meaningfully protecting the user, so dispatch() for
+    propose_trade's result calls the portfolio endpoints directly instead of
+    waiting for a confirm click.
     """
     client, error = _get_client()
     if error:
@@ -346,11 +364,43 @@ def run_multi_agent_analysis(ticker: str):
     for block in final_message.content:
         if block.type == "tool_use" and block.name == "propose_trade":
             args = block.input or {}
-            yield {
-                "type": "trade_proposal",
-                "ticker": (args.get("ticker") or ticker).upper(),
-                "action": args.get("action"),
-                "reason": args.get("reason", ""),
-            }
+            trade_ticker = (args.get("ticker") or ticker).upper()
+            action = args.get("action")
+            reason = args.get("reason", "")
+
+            quotes = finance_service.get_quotes([trade_ticker])
+            price = quotes[0]["price"] if quotes else None
+
+            shares = None
+            if action == "buy":
+                shares = PLACEHOLDER_BUY_SHARES
+            elif action == "sell":
+                held = _get_open_position(trade_ticker)
+                shares = held["shares"] if held else None
+
+            dollar_amount = (shares * price) if (shares and price) else None
+
+            if dollar_amount is not None and dollar_amount < AUTO_EXECUTE_THRESHOLD:
+                try:
+                    if action == "buy":
+                        portfolio_service.add_position(trade_ticker, shares, price)
+                    else:
+                        portfolio_service.sell_position(trade_ticker)
+                    yield {
+                        "type": "trade_executed",
+                        "ticker": trade_ticker,
+                        "action": action,
+                        "shares": shares,
+                        "price": price,
+                        "reason": reason,
+                    }
+                    continue
+                except ValueError as e:
+                    # A legitimate business-rule failure (e.g. an open position
+                    # already exists for a "buy") - fall through to asking a
+                    # human rather than silently dropping the proposal.
+                    print(f"[multi_agent] auto-execute failed for {trade_ticker}: {e}", flush=True)
+
+            yield {"type": "trade_proposal", "ticker": trade_ticker, "action": action, "reason": reason}
 
     yield {"type": "done"}

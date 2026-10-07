@@ -439,7 +439,8 @@ export type MultiAgentEvent =
     | { type: "agent_tool_start"; agent_id: string; tool: string; args: Record<string, unknown> }
     | { type: "agent_tool_end"; agent_id: string; tool: string }
     | { type: "agent_done"; agent_id: string; full_report: string }
-    | { type: "trade_proposal"; ticker: string; action: "buy" | "sell"; reason: string };
+    | { type: "trade_proposal"; ticker: string; action: "buy" | "sell"; reason: string }
+    | { type: "trade_executed"; ticker: string; action: "buy" | "sell"; shares: number; price: number; reason: string };
 
 // Streams the agent's response as it's generated. Not a plain fetch: this
 // endpoint returns text/event-stream, and EventSource can't send the
