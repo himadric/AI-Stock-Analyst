@@ -254,7 +254,7 @@ npm run dev
 
 Open http://localhost:3000. You'll be sent to the login page. Click **Sign in with Google** and choose the account you set as `ALLOWED_USER_EMAIL`.
 
-The backend also serves interactive API docs at http://127.0.0.1:8000/api/docs (or http://localhost:3000/api/docs through the frontend's dev proxy — the same path also works once deployed, at `https://<your-app>.vercel.app/api/docs`). Every endpoint except `/api/health` needs a token:
+The backend also serves interactive API docs at http://127.0.0.1:8000/api/docs (or http://localhost:3000/api/docs through the frontend's dev proxy — the same path also works once deployed, at `https://<your-app>.vercel.app/api/docs`). The live deployment's docs are browsable at [ai-stock-analyst-tau.vercel.app/api/docs](https://ai-stock-analyst-tau.vercel.app/api/docs) — viewing the schema needs no token, but "Try it out" calls still do, since every endpoint except `/api/health` requires one:
 
 1. While signed in to the app, open http://localhost:3000/session-token and copy the `token` value. It's valid for one hour.
 2. On the docs page, open an endpoint, click **Try it out**, and enter `Bearer <token>` in the **authorization** field.
