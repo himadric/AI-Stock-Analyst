@@ -33,6 +33,7 @@ from app.services.simulation import SimulationService
 from app.services.filing_search_service import FilingSearchService
 from app.services.smart_money_service import SmartMoneyService
 from app.agent import mcp_client
+from app.agent import skills
 from app.db import db
 
 finance_service = FinanceService()
@@ -233,6 +234,13 @@ def _propose_watchlist_add(ticker: str, reason: str):
     return {"status": "proposed", "ticker": ticker.upper(), "note": "Shown to the user for confirmation; not added yet."}
 
 
+def _load_skill(skill_id: str):
+    # Returns a plain string, not a dict - the markdown IS the payload,
+    # not data to wrap. json.dumps() in dispatch() still makes it a valid
+    # tool_result string either way.
+    return skills.load_skill(skill_id)
+
+
 TOOL_DISPATCH = {
     "search_tickers": _search_tickers,
     "get_company_info": _get_company_info,
@@ -263,6 +271,7 @@ TOOL_DISPATCH = {
     "get_investment_verdict": _get_investment_verdict,
     "get_watchlist": _get_watchlist,
     "propose_watchlist_add": _propose_watchlist_add,
+    "load_skill": _load_skill,
 }
 
 # ---- Anthropic tool schemas ---------------------------------------------
@@ -484,6 +493,20 @@ TOOLS = [
                 "reason": {"type": "string", "description": "One sentence on why this ticker is worth adding."},
             },
             "required": ["ticker", "reason"],
+        },
+    },
+    {
+        "name": "load_skill",
+        "description": (
+            "Loads the full step-by-step guidance for one of this app's skills (see the Skills list in your "
+            "system prompt for what each one covers). Call this before you start researching once you've decided "
+            "a skill matches the question — it returns a short playbook, not ticker data, so it doesn't replace "
+            "any of your data tools, just guides how to use them."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {"skill_id": {"type": "string", "enum": skills.SKILL_IDS}},
+            "required": ["skill_id"],
         },
     },
 ]

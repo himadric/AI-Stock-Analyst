@@ -83,7 +83,8 @@ function describeTool(tool: string, args: Record<string, unknown>) {
     const label = tool.replace(/^get_/, "").replace(/^propose_/, "propose ").replace(/_/g, " ");
     const tickers = Array.isArray(args?.tickers) ? (args.tickers as string[]).join(", ") : "";
     const arg =
-        (args?.ticker as string) || tickers || (args?.query as string) || (args?.category as string) || (args?.url as string) || "";
+        (args?.ticker as string) || tickers || (args?.query as string) || (args?.category as string) ||
+        (args?.url as string) || (args?.skill_id as string) || "";
     return arg ? `${label} (${arg})` : label;
 }
 

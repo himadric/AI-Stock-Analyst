@@ -11,12 +11,13 @@ tool-use API is the better fit for it.
 import os
 from app.agent.tools import TOOLS, dispatch
 from app.agent import mcp_client
+from app.agent import skills
 
 MODEL = "claude-sonnet-5-5"
 MAX_TOOL_TURNS = 8
 MAX_TOKENS = 2048
 
-SYSTEM_PROMPT = """You are the research assistant built into AI Analyst, a personal stock/ETF \
+SYSTEM_PROMPT = f"""You are the research assistant built into AI Analyst, a personal stock/ETF \
 research dashboard. You help the user research tickers and think through stock picks using the \
 tools available to you — never from memory or guesswork about current prices, financials, or news.
 
@@ -36,6 +37,12 @@ they genuinely can't cover: breaking news in the last few hours, current macro/F
 anything outside a ticker entirely. If a search result's content is cut short, you can fetch the full page.
 - If you hit your research budget before finishing, summarize what you found so far rather than \
 leaving the user with nothing.
+
+Skills: optional step-by-step playbooks for specific kinds of requests, each covering something more \
+nuanced than one tool's description alone conveys. If one clearly matches what's being asked, call \
+load_skill(skill_id) first and follow it — don't guess at the structure yourself. Most questions don't \
+need one; only reach for a skill when its description genuinely matches.
+{skills.catalog_text()}
 """
 
 
