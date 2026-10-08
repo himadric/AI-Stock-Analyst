@@ -27,14 +27,14 @@ cd api
 source ../.venv/bin/activate        # venv lives at repo root
 pip install -r requirements.txt
 uvicorn main:app --reload --port 8000
-# Swagger UI: http://127.0.0.1:8000/docs
+# Swagger UI: http://127.0.0.1:8000/api/docs (also reachable at http://localhost:3000/api/docs via the dev proxy)
 
 # Batch jobs (run from repo root, need MONGO_URI and sometimes FMP_API_KEY)
 python api/scripts/update_snp_heatmap.py
 PYTHONPATH=api python api/utils/generate_leaderboard.py
 ```
 
-There is no automated test suite. Check your changes by running both servers and loading the affected page. You can also call the endpoint through `/docs` or `curl`. Every endpoint except `/api/health` needs `Authorization: Bearer <token>`. While signed in, get a token from `http://localhost:3000/session-token`. The `api/debug_*.py` and `api/verify_*.py` files are throwaway scripts, not tests.
+There is no automated test suite. Check your changes by running both servers and loading the affected page. You can also call the endpoint through `/api/docs` or `curl`. Every endpoint except `/api/health` needs `Authorization: Bearer <token>`. While signed in, get a token from `http://localhost:3000/session-token`. The `api/debug_*.py` and `api/verify_*.py` files are throwaway scripts, not tests.
 
 ## Environment variables
 
@@ -229,6 +229,7 @@ This review is advisory only. It never approves, requests changes, or edits code
 
 - **How API auth works.** `middleware.ts` protects pages only. The API is protected separately: `lib/api.ts` gets a 1-hour HS256 token from `/session-token` (issued only to the signed-in `ALLOWED_USER_EMAIL`) and sends it as `Authorization: Bearer`, and `api/app/auth.py` verifies it. Both sides derive the signing key from `AUTH_SECRET` using the context string `ai-analyst-api-token`; keep those in sync. A new router is protected automatically when you register it with `dependencies=protected` in `app/api/__init__.py`. Only `/health` is public. New Next.js route handlers under `/api` must call `auth()` themselves.
 - **The `/api` namespace is shared.** The Next route `src/app/api/heatmap/relative-strength` wins over the dev rewrite and the Vercel rewrite only because filesystem routes resolve first. Don't add FastAPI routes under `/api/heatmap/`.
+- **Swagger UI and the OpenAPI schema live at `/api/docs` / `/api/openapi.json`, not FastAPI's defaults (`/docs`, `/openapi.json`).** Set via `docs_url`/`openapi_url`/`redoc_url` on the `FastAPI(...)` constructor in `main.py`. This is deliberate, not a leftover: `vercel.json` only rewrites `/api/:path*` to the Python function, so anything at the app root is unreachable once deployed. If you ever add another FastAPI-internal route (a custom docs page, etc.), it needs the same `/api` prefix or it'll work locally and 404 in production.
 - The FastAPI CORS allow-list is localhost-only. Production works because the call is same-origin through the Vercel rewrite.
 - NextAuth uses `basePath: "/auth_endpoints"`, not the default `/api/auth`, so it doesn't collide with the FastAPI proxy.
 - The Vercel Python function has a size limit. Don't add heavy dependencies (scipy, torch, etc.) to `api/requirements.txt`.

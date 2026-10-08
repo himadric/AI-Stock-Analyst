@@ -7,7 +7,18 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api import router
 
-app = FastAPI(title="AI Analyst API", version="0.1.0")
+# docs/openapi/redoc live under /api so vercel.json's "/api/:path*" rewrite
+# reaches them in production - FastAPI's defaults (/docs, /openapi.json) sit
+# at the app root, which only the Vercel rewrite for /api/* ever forwards to
+# this function, so the root-level paths 404 on the deployed site even
+# though they work fine hitting uvicorn directly in local dev.
+app = FastAPI(
+    title="AI Analyst API",
+    version="0.1.0",
+    docs_url="/api/docs",
+    redoc_url="/api/redoc",
+    openapi_url="/api/openapi.json",
+)
 
 # Configure CORS
 origins = [
