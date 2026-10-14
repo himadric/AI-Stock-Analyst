@@ -4,8 +4,11 @@ import numpy as np
 import os
 import json
 import requests
+import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
+from email.utils import parsedate_to_datetime
+from urllib.parse import urlparse
 from app.db import db
 
 class FinanceService:
@@ -453,55 +456,113 @@ class FinanceService:
 
     def get_company_news(self, ticker: str):
         """
-        Fetches recent news for a given ticker.
+        Fetches recent news for a given ticker. yfinance's `.news` wraps an
+        unofficial Yahoo endpoint (/xhr/ncp) that is currently returning an
+        error status for every ticker - a known, widely-reported Yahoo-side
+        outage (see github.com/ranaroussi/yfinance issues), not a bug in
+        this code or a stale yfinance version. yfinance itself catches that
+        failure internally and returns an empty list rather than raising,
+        so the outage looks identical to "no news for this ticker" at the
+        call site - which is why this also treats an empty, non-erroring
+        result as a reason to fall back, not just an exception.
+        Falls back to Yahoo's own RSS headline feed - a different endpoint
+        that's still working - so real news keeps showing while /xhr/ncp
+        is down.
         """
         try:
             stock = yf.Ticker(ticker)
-            news = stock.news
-            
+            formatted_news = self._format_yf_news(stock.news)
+            if formatted_news:
+                return formatted_news
+        except Exception as e:
+            print(f"Error fetching news for {ticker} via yfinance: {e}")
+
+        return self._get_news_from_rss(ticker)
+
+    def _format_yf_news(self, news):
+        formatted_news = []
+        for item in news[:4]:
+            # Check for nested 'content' key
+            news_data = item.get('content', item)
+            if not news_data:
+                continue
+
+            # Extract fields safely
+            title = news_data.get('title', 'No Title')
+
+            # Publisher is nested in 'provider' -> 'displayName'
+            publisher = news_data.get('provider', {}).get('displayName', 'Unknown Publisher')
+
+            # Link is in 'link' or nested in 'canonicalUrl' -> 'url' or 'clickThroughUrl' -> 'url'
+            link = news_data.get('link')
+            if not link:
+                 link = news_data.get('canonicalUrl', {}).get('url')
+            if not link:
+                 link = news_data.get('clickThroughUrl', {}).get('url')
+
+            # Publish time
+            publish_time = news_data.get('providerPublishTime')
+            if not publish_time:
+                # Parse pubDate if available (ISO string)
+                pub_date_str = news_data.get('pubDate')
+                if pub_date_str:
+                     try:
+                         dt = datetime.fromisoformat(pub_date_str.replace('Z', '+00:00'))
+                         publish_time = int(dt.timestamp())
+                     except:
+                         publish_time = 0
+
+            if title and link:
+                formatted_news.append({
+                    "title": title,
+                    "publisher": publisher,
+                    "link": link,
+                    "providerPublishTime": publish_time or 0
+                })
+
+        return formatted_news
+
+    def _get_news_from_rss(self, ticker: str):
+        """
+        Fallback news source - Yahoo's RSS headline feed, a separate
+        endpoint from the one `.news` wraps. Requires a real User-Agent;
+        Yahoo blocks the request without one. The feed has no per-item
+        publisher field, so the link's domain is used as a reasonable
+        stand-in (e.g. "thestreet.com") rather than a fabricated value.
+        """
+        try:
+            url = f"https://feeds.finance.yahoo.com/rss/2.0/headline?s={ticker}"
+            headers = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"}
+            resp = requests.get(url, headers=headers, timeout=10)
+            resp.raise_for_status()
+
+            root = ET.fromstring(resp.content)
             formatted_news = []
-            for item in news[:4]:
-                # Check for nested 'content' key
-                news_data = item.get('content', item)
-                if not news_data:
-                    continue
-                
-                # Extract fields safely
-                title = news_data.get('title', 'No Title')
-                
-                # Publisher is nested in 'provider' -> 'displayName'
-                publisher = news_data.get('provider', {}).get('displayName', 'Unknown Publisher')
-                
-                # Link is in 'link' or nested in 'canonicalUrl' -> 'url' or 'clickThroughUrl' -> 'url'
-                link = news_data.get('link')
-                if not link:
-                     link = news_data.get('canonicalUrl', {}).get('url')
-                if not link:
-                     link = news_data.get('clickThroughUrl', {}).get('url')
-                
-                # Publish time
-                publish_time = news_data.get('providerPublishTime')
-                if not publish_time:
-                    # Parse pubDate if available (ISO string)
-                    pub_date_str = news_data.get('pubDate')
-                    if pub_date_str:
-                         try:
-                             dt = datetime.fromisoformat(pub_date_str.replace('Z', '+00:00'))
-                             publish_time = int(dt.timestamp())
-                         except:
-                             publish_time = 0
-                
+            for item in root.findall(".//item")[:4]:
+                title = item.findtext("title", "No Title")
+                link = item.findtext("link", "")
+                pub_date_str = item.findtext("pubDate")
+
+                publish_time = 0
+                if pub_date_str:
+                    try:
+                        publish_time = int(parsedate_to_datetime(pub_date_str).timestamp())
+                    except Exception:
+                        publish_time = 0
+
+                publisher = urlparse(link).netloc.replace("www.", "") if link else "Yahoo Finance"
+
                 if title and link:
                     formatted_news.append({
                         "title": title,
                         "publisher": publisher,
                         "link": link,
-                        "providerPublishTime": publish_time or 0
+                        "providerPublishTime": publish_time,
                     })
-            
+
             return formatted_news
         except Exception as e:
-            print(f"Error fetching news for {ticker}: {e}")
+            print(f"Error fetching RSS news fallback for {ticker}: {e}")
             return []
 
     def get_quarterly_financials(self, ticker: str):
