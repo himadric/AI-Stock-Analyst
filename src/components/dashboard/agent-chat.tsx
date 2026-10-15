@@ -6,7 +6,7 @@ import ReactMarkdown from "react-markdown";
 import { Bot, Check, ChevronDown, ChevronRight, Loader2, Send, Sparkles, User, Users, Wrench, X } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import {
     addToWatchlist,
@@ -230,7 +230,7 @@ export function AgentChat() {
     // Handles a pasted screenshot (e.g. Cmd+V after a screen capture) -
     // reads the clipboard's image data directly, no file picker needed.
     // Plain pasted text is untouched; only an actual image item triggers this.
-    function handlePaste(e: ClipboardEvent<HTMLInputElement>) {
+    function handlePaste(e: ClipboardEvent<HTMLTextAreaElement>) {
         const imageItem = Array.from(e.clipboardData.items).find((item) => item.type.startsWith("image/"));
         if (!imageItem) return;
         e.preventDefault();
@@ -647,12 +647,24 @@ export function AgentChat() {
                 >
                     <Users className="h-4 w-4" />
                 </Button>
-                <Input
+                <Textarea
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                     onPaste={handlePaste}
-                    placeholder="Ask about a ticker, your watchlist, or paste a chart screenshot…"
+                    onKeyDown={(e) => {
+                        // Enter sends, Shift+Enter inserts a newline - the
+                        // standard chat convention. Without this, Enter would
+                        // just insert a newline too (a <textarea>'s default),
+                        // leaving no way to submit from the keyboard.
+                        if (e.key === "Enter" && !e.shiftKey) {
+                            e.preventDefault();
+                            send(input);
+                        }
+                    }}
+                    placeholder="Ask about a ticker, your watchlist, or paste a chart screenshot… (Shift+Enter for a new line)"
                     disabled={loading}
+                    rows={1}
+                    className="min-h-10 max-h-32 resize-none py-2"
                 />
                 <Button type="submit" disabled={loading || (!input.trim() && !attachedImage)}>
                     {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
