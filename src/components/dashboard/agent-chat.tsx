@@ -3,7 +3,7 @@
 import { useRef, useState, type ClipboardEvent } from "react";
 import { useSearchParams } from "next/navigation";
 import ReactMarkdown from "react-markdown";
-import { Bot, Check, ChevronDown, ChevronRight, Loader2, Send, Sparkles, User, Users, Wrench, X } from "lucide-react";
+import { Bot, Check, ChevronDown, ChevronRight, Loader2, Send, Sparkles, Square, User, Users, Wrench, X } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -107,6 +107,10 @@ export function AgentChat() {
     const [messages, setMessages] = useState<DisplayMessage[]>([]);
     const [input, setInput] = useState("");
     const [loading, setLoading] = useState(false);
+    // Shared by send() and runMultiAgentAnalysis() - only one of either can
+    // be in flight at a time anyway (both gate on the same `loading` state),
+    // so one ref covers whichever is currently running.
+    const abortControllerRef = useRef<AbortController | null>(null);
     // A pasted image waiting to be sent with the next message - cleared
     // once send() uses it. Claude reads it natively alongside tool calls in
     // the same turn, unlike the one-shot, tool-free Chart page analysis.
@@ -186,9 +190,11 @@ export function AgentChat() {
         scrollToBottom();
 
         let assistantText = "";
+        const controller = new AbortController();
+        abortControllerRef.current = controller;
 
         try {
-            for await (const event of streamAgentChat(history)) {
+            for await (const event of streamAgentChat(history, controller.signal)) {
                 if (event.type === "text") {
                     assistantText += event.text;
                     updateLast((m) => ({ ...m, content: assistantText }));
@@ -218,9 +224,17 @@ export function AgentChat() {
                 }
             }
         } catch (e) {
-            const errorText = `⚠️ ${e instanceof Error ? e.message : "Something went wrong reaching the analyst agent."}`;
-            updateLast((m) => ({ ...m, content: m.content ? `${m.content}\n\n${errorText}` : errorText }));
+            if (e instanceof DOMException && e.name === "AbortError") {
+                // User-initiated stop, not a real failure - keep whatever
+                // text/tool trace already streamed in, just note it was cut
+                // short rather than showing a scary error.
+                updateLast((m) => ({ ...m, content: m.content ? `${m.content}\n\n_(stopped)_` : "_(stopped)_" }));
+            } else {
+                const errorText = `⚠️ ${e instanceof Error ? e.message : "Something went wrong reaching the analyst agent."}`;
+                updateLast((m) => ({ ...m, content: m.content ? `${m.content}\n\n${errorText}` : errorText }));
+            }
         } finally {
+            abortControllerRef.current = null;
             updateLast((m) => ({ ...m, streaming: false }));
             setLoading(false);
             scrollToBottom();
@@ -258,6 +272,8 @@ export function AgentChat() {
         scrollToBottom();
 
         let assistantText = "";
+        const controller = new AbortController();
+        abortControllerRef.current = controller;
 
         function updateSubagent(agentId: string, updater: (a: SubagentEntry) => SubagentEntry) {
             updateLast((m) => ({
@@ -267,7 +283,7 @@ export function AgentChat() {
         }
 
         try {
-            for await (const event of streamMultiAgentAnalysis(ticker)) {
+            for await (const event of streamMultiAgentAnalysis(ticker, controller.signal)) {
                 if (event.type === "text") {
                     assistantText += event.text;
                     updateLast((m) => ({ ...m, content: assistantText }));
@@ -321,13 +337,22 @@ export function AgentChat() {
                 }
             }
         } catch (e) {
-            const errorText = `⚠️ ${e instanceof Error ? e.message : "Something went wrong reaching the analyst agent."}`;
-            updateLast((m) => ({ ...m, content: m.content ? `${m.content}\n\n${errorText}` : errorText }));
+            if (e instanceof DOMException && e.name === "AbortError") {
+                updateLast((m) => ({ ...m, content: m.content ? `${m.content}\n\n_(stopped)_` : "_(stopped)_" }));
+            } else {
+                const errorText = `⚠️ ${e instanceof Error ? e.message : "Something went wrong reaching the analyst agent."}`;
+                updateLast((m) => ({ ...m, content: m.content ? `${m.content}\n\n${errorText}` : errorText }));
+            }
         } finally {
+            abortControllerRef.current = null;
             updateLast((m) => ({ ...m, streaming: false }));
             setLoading(false);
             scrollToBottom();
         }
+    }
+
+    function stop() {
+        abortControllerRef.current?.abort();
     }
 
     async function confirmProposal(index: number) {
@@ -666,9 +691,15 @@ export function AgentChat() {
                     rows={1}
                     className="min-h-10 max-h-32 resize-none py-2"
                 />
-                <Button type="submit" disabled={loading || (!input.trim() && !attachedImage)}>
-                    {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                </Button>
+                {loading ? (
+                    <Button type="button" variant="destructive" onClick={stop} title="Stop" aria-label="Stop">
+                        <Square className="h-3.5 w-3.5 fill-current" />
+                    </Button>
+                ) : (
+                    <Button type="submit" disabled={!input.trim() && !attachedImage}>
+                        <Send className="h-4 w-4" />
+                    </Button>
+                )}
             </form>
         </div>
     );
