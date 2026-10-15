@@ -1,5 +1,5 @@
 import json
-from typing import List, Literal
+from typing import Any, List, Literal, Union
 
 from fastapi import APIRouter, Query
 from fastapi.responses import StreamingResponse
@@ -14,7 +14,11 @@ router = APIRouter()
 
 class ChatMessage(BaseModel):
     role: Literal["user", "assistant"]
-    content: str
+    # Usually a plain string. For a message with a pasted image, the
+    # frontend sends Anthropic content blocks instead (text + image)
+    # - run_agent_turn passes content straight through to the Anthropic
+    # SDK unchanged either way, so no change was needed there.
+    content: Union[str, List[dict[str, Any]]]
 
 
 class ChatRequest(BaseModel):
