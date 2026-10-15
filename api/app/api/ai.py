@@ -21,6 +21,7 @@ class ChartAnalysisRequest(BaseModel):
     ticker: str
     period: str
     interval: str
+    chart_image: str | None = None  # base64 PNG of the rendered chart, optionally a data: URL
 
 @router.post("/analyze_filing")
 def analyze_filing(request: AnalyzeRequest):
@@ -42,13 +43,25 @@ async def analyze_news(request: NewsAnalysisRequest):
     return {"analysis": analysis}
 
 @router.post("/analyze_chart")
-async def analyze_chart(request: ChartAnalysisRequest):
-    # We need to fetch the data first to pass it to the AI
+def analyze_chart(request: ChartAnalysisRequest):
+    # def, not async def: get_stock_history() calls yfinance, which blocks -
+    # this handler was previously async def with the same blocking call
+    # inside it, a pre-existing instance of the bug CLAUDE.md's backend
+    # conventions warn against; fixed here since this function is already
+    # being rewritten for the image-based analysis below.
     data = finance_service.get_stock_history(request.ticker, request.period, request.interval)
     if not data:
         raise HTTPException(status_code=404, detail="Could not fetch market data for analysis")
-        
-    return ai_service.analyze_chart_data(request.ticker, request.period, request.interval, data)
+
+    image_b64 = request.chart_image
+    if image_b64 and image_b64.startswith("data:"):
+        # Strip a data: URL prefix (e.g. "data:image/png;base64,") if the
+        # caller sent one instead of raw base64 - Gemini's inline_data wants
+        # just the base64 payload.
+        image_b64 = image_b64.split(",", 1)[-1]
+
+    analysis = ai_service.analyze_chart_data(request.ticker, request.period, request.interval, data, image_b64=image_b64)
+    return {"analysis": analysis}
 
 class ValuationRequest(BaseModel):
     ticker: str

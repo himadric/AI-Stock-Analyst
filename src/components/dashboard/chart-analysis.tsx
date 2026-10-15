@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type RefObject } from "react";
+import { toPng } from "html-to-image";
 import { analyzeChart } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,16 +11,32 @@ interface ChartAnalysisProps {
   ticker: string;
   period: string;
   interval: string;
+  // The rendered chart's container - captured to a PNG so the model reads
+  // the actual chart on screen (indicators, comparisons, and all), not a
+  // table of numbers reconstructed separately from a fresh data fetch.
+  chartRef: RefObject<HTMLDivElement | null>;
 }
 
-export function ChartAnalysis({ ticker, period, interval }: ChartAnalysisProps) {
+export function ChartAnalysis({ ticker, period, interval, chartRef }: ChartAnalysisProps) {
   const [analysis, setAnalysis] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   async function handleAnalyze() {
     setLoading(true);
     try {
-      const result = await analyzeChart(ticker, period, interval);
+      // Capture is best-effort: if it fails for any reason (an unusual
+      // browser, a transient DOM issue), fall back to the numeric-only
+      // analysis rather than blocking the whole feature on a screenshot.
+      let chartImage: string | undefined;
+      if (chartRef.current) {
+        try {
+          chartImage = await toPng(chartRef.current, { pixelRatio: 2 });
+        } catch (captureErr) {
+          console.error("Chart capture failed, falling back to numeric analysis:", captureErr);
+        }
+      }
+
+      const result = await analyzeChart(ticker, period, interval, chartImage);
       setAnalysis(result);
     } catch (err) {
       console.error(err);
