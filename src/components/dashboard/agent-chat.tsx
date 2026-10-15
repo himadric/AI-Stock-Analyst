@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useRef, useState, type ClipboardEvent } from "react";
 import { useSearchParams } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import { Bot, Check, ChevronDown, ChevronRight, Loader2, Send, Sparkles, User, Users, Wrench, X } from "lucide-react";
@@ -16,6 +16,7 @@ import {
     addPortfolioPosition,
     sellPortfolioPosition,
     type AgentChatMessage,
+    type AgentContentBlock,
 } from "@/lib/api";
 
 interface ToolCallEntry {
@@ -40,6 +41,11 @@ interface DisplayMessage {
     subagents?: SubagentEntry[];
     streaming?: boolean;
     traceExpanded?: boolean;
+    // Display-only: a pasted image shown in the transcript so a past turn
+    // like "what's wrong with this chart" still makes sense when scrolled
+    // back to. Separate from what actually gets sent to the backend (see
+    // send()), which builds its own Anthropic content-block array.
+    image?: string;
 }
 
 interface WatchlistProposal {
@@ -88,10 +94,23 @@ function describeTool(tool: string, args: Record<string, unknown>) {
     return arg ? `${label} (${arg})` : label;
 }
 
+// Splits a "data:image/png;base64,AAAA..." URL into Anthropic's expected
+// {media_type, data} shape. FileReader.readAsDataURL() always produces
+// this exact format, so no validation beyond the split itself.
+function parseDataUrl(dataUrl: string): { mediaType: string; data: string } {
+    const [header, data] = dataUrl.split(",", 2);
+    const mediaType = header.match(/data:(.*?);base64/)?.[1] || "image/png";
+    return { mediaType, data };
+}
+
 export function AgentChat() {
     const [messages, setMessages] = useState<DisplayMessage[]>([]);
     const [input, setInput] = useState("");
     const [loading, setLoading] = useState(false);
+    // A pasted image waiting to be sent with the next message - cleared
+    // once send() uses it. Claude reads it natively alongside tool calls in
+    // the same turn, unlike the one-shot, tool-free Chart page analysis.
+    const [attachedImage, setAttachedImage] = useState<string | null>(null);
     const [proposals, setProposals] = useState<WatchlistProposal[]>([]);
     const [tradeProposals, setTradeProposals] = useState<TradeProposal[]>([]);
     const bottomRef = useRef<HTMLDivElement>(null);
@@ -132,21 +151,37 @@ export function AgentChat() {
 
     async function send(text: string) {
         const trimmed = text.trim();
-        if (!trimmed || loading) return;
+        if ((!trimmed && !attachedImage) || loading) return;
+
+        // The new message's content is a plain string, same as every prior
+        // turn, unless an image is attached - then it's Anthropic content
+        // blocks (text + image) instead. Claude reads the image natively
+        // alongside whatever tools it calls in the same turn; this isn't a
+        // separate one-shot analysis the way the Chart page's is.
+        let newContent: AgentChatMessage["content"] = trimmed;
+        if (attachedImage) {
+            const { mediaType, data } = parseDataUrl(attachedImage);
+            const blocks: AgentContentBlock[] = [
+                { type: "text", text: trimmed || "Please analyze this image." },
+                { type: "image", source: { type: "base64", media_type: mediaType, data } },
+            ];
+            newContent = blocks;
+        }
 
         // Only role/content go to the backend - tool-call traces are a
         // frontend-only, per-turn display; the wire format doesn't carry them.
         const history: AgentChatMessage[] = [
             ...messages.map((m) => ({ role: m.role, content: m.content })),
-            { role: "user", content: trimmed },
+            { role: "user", content: newContent },
         ];
 
         setMessages((prev) => [
             ...prev,
-            { role: "user", content: trimmed },
+            { role: "user", content: trimmed, image: attachedImage ?? undefined },
             { role: "assistant", content: "", toolCalls: [], streaming: true },
         ]);
         setInput("");
+        setAttachedImage(null);
         setLoading(true);
         scrollToBottom();
 
@@ -190,6 +225,20 @@ export function AgentChat() {
             setLoading(false);
             scrollToBottom();
         }
+    }
+
+    // Handles a pasted screenshot (e.g. Cmd+V after a screen capture) -
+    // reads the clipboard's image data directly, no file picker needed.
+    // Plain pasted text is untouched; only an actual image item triggers this.
+    function handlePaste(e: ClipboardEvent<HTMLInputElement>) {
+        const imageItem = Array.from(e.clipboardData.items).find((item) => item.type.startsWith("image/"));
+        if (!imageItem) return;
+        e.preventDefault();
+        const file = imageItem.getAsFile();
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = () => setAttachedImage(reader.result as string);
+        reader.readAsDataURL(file);
     }
 
     // Dedicated action, not a regular chat turn - takes just the current
@@ -482,7 +531,16 @@ export function AgentChat() {
                                     )}
                                 </>
                             ) : (
-                                m.content
+                                <>
+                                    {m.image && (
+                                        <img
+                                            src={m.image}
+                                            alt="Image sent to the analyst agent"
+                                            className="rounded-md mb-1.5 max-h-40 w-auto"
+                                        />
+                                    )}
+                                    {m.content}
+                                </>
                             )}
                         </div>
                         {m.role === "user" && (
@@ -562,12 +620,21 @@ export function AgentChat() {
                 <div ref={bottomRef} />
             </div>
 
+            {attachedImage && (
+                <div className="flex items-center gap-2 pt-2 border-t">
+                    <img src={attachedImage} alt="Pasted image to send" className="h-12 w-12 rounded border object-cover" />
+                    <span className="text-xs text-muted-foreground flex-1">Image attached — will be sent with your next message</span>
+                    <Button type="button" variant="ghost" size="icon" className="h-6 w-6" onClick={() => setAttachedImage(null)}>
+                        <X className="h-3.5 w-3.5" />
+                    </Button>
+                </div>
+            )}
             <form
                 onSubmit={(e) => {
                     e.preventDefault();
                     send(input);
                 }}
-                className="flex gap-2 pt-2 border-t"
+                className={cn("flex gap-2", !attachedImage && "pt-2 border-t")}
             >
                 <Button
                     type="button"
@@ -583,10 +650,11 @@ export function AgentChat() {
                 <Input
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
-                    placeholder="Ask about a ticker, your watchlist, or the market…"
+                    onPaste={handlePaste}
+                    placeholder="Ask about a ticker, your watchlist, or paste a chart screenshot…"
                     disabled={loading}
                 />
-                <Button type="submit" disabled={loading || !input.trim()}>
+                <Button type="submit" disabled={loading || (!input.trim() && !attachedImage)}>
                     {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                 </Button>
             </form>

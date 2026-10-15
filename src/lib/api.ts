@@ -418,9 +418,20 @@ export async function deletePortfolioPosition(id: string) {
 }
 
 // Analyst agent (Path A — interactive chat only; see docs/ARCHITECTURE.md)
+//
+// content is usually a plain string, same as always - but for a message
+// that attaches a pasted image, it's a list of Anthropic content blocks
+// instead (text + image). The Messages API accepts either shape per
+// message natively, and loop.py already passes `content` straight through
+// unchanged, so this needed no backend restructuring - just a looser type
+// on both sides of the wire.
+export type AgentContentBlock =
+    | { type: "text"; text: string }
+    | { type: "image"; source: { type: "base64"; media_type: string; data: string } };
+
 export interface AgentChatMessage {
     role: "user" | "assistant";
-    content: string;
+    content: string | AgentContentBlock[];
 }
 
 export type AgentEvent =
