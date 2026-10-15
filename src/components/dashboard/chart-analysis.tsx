@@ -20,6 +20,9 @@ interface ChartAnalysisProps {
 export function ChartAnalysis({ ticker, period, interval, chartRef }: ChartAnalysisProps) {
   const [analysis, setAnalysis] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  // Kept purely to show the user what was actually sent to the model - proof
+  // this is reading the rendered chart, not just a table of numbers.
+  const [capturedImage, setCapturedImage] = useState<string | null>(null);
 
   async function handleAnalyze() {
     setLoading(true);
@@ -35,6 +38,7 @@ export function ChartAnalysis({ ticker, period, interval, chartRef }: ChartAnaly
           console.error("Chart capture failed, falling back to numeric analysis:", captureErr);
         }
       }
+      setCapturedImage(chartImage ?? null);
 
       const result = await analyzeChart(ticker, period, interval, chartImage);
       setAnalysis(result);
@@ -80,12 +84,28 @@ export function ChartAnalysis({ ticker, period, interval, chartRef }: ChartAnaly
         )}
 
         {analysis && !loading && (
-          <div className="prose prose-sm dark:prose-invert max-w-none mt-4 p-4 bg-muted/30 rounded-md">
-            {/* Simple Markdown rendering by splitting lines or just preserving whitespace */}
-            <div className="whitespace-pre-wrap font-sans text-sm leading-relaxed">
-              {analysis}
+          <>
+            {capturedImage && (
+              <div className="mt-4">
+                <p className="text-xs font-medium text-muted-foreground mb-1.5">
+                  🖼️ Image sent to the AI — this is what it actually analyzed, not just the numbers
+                </p>
+                <a href={capturedImage} target="_blank" rel="noopener noreferrer">
+                  <img
+                    src={capturedImage}
+                    alt="Chart image analyzed by the AI"
+                    className="rounded-md border max-h-48 w-auto hover:opacity-90 transition-opacity cursor-zoom-in"
+                  />
+                </a>
+              </div>
+            )}
+            <div className="prose prose-sm dark:prose-invert max-w-none mt-4 p-4 bg-muted/30 rounded-md">
+              {/* Simple Markdown rendering by splitting lines or just preserving whitespace */}
+              <div className="whitespace-pre-wrap font-sans text-sm leading-relaxed">
+                {analysis}
+              </div>
             </div>
-          </div>
+          </>
         )}
       </CardContent>
     </Card>
