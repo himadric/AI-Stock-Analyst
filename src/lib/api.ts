@@ -458,11 +458,18 @@ export type MultiAgentEvent =
 // endpoint returns text/event-stream, and EventSource can't send the
 // Authorization header apiFetch attaches, so we parse the SSE stream by
 // hand over a normal fetch instead.
-export async function* streamAgentChat(messages: AgentChatMessage[]): AsyncGenerator<AgentEvent> {
+// signal lets the caller stop an in-flight turn (a "Stop" button) - aborting
+// the fetch doesn't just stop the frontend from listening, it closes the
+// underlying connection, which Starlette's StreamingResponse detects and
+// uses to stop iterating run_agent_turn's generator server-side too
+// (verified empirically: a disconnected client stops a streaming generator
+// within about one iteration, not after it runs to completion unseen).
+export async function* streamAgentChat(messages: AgentChatMessage[], signal?: AbortSignal): AsyncGenerator<AgentEvent> {
     const res = await apiFetch(`/agent/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ messages }),
+        signal,
     });
     if (!res.ok || !res.body) throw new Error("Failed to reach the analyst agent");
 
@@ -490,11 +497,12 @@ export async function* streamAgentChat(messages: AgentChatMessage[]): AsyncGener
 // Same hand-rolled SSE parsing as streamAgentChat, for the same reason
 // (EventSource can't carry the Authorization header). Takes a ticker, not a
 // message history — this is a dedicated action, not a conversational turn.
-export async function* streamMultiAgentAnalysis(ticker: string): AsyncGenerator<MultiAgentEvent> {
+export async function* streamMultiAgentAnalysis(ticker: string, signal?: AbortSignal): AsyncGenerator<MultiAgentEvent> {
     const res = await apiFetch(`/agent/multi_analysis`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ticker }),
+        signal,
     });
     if (!res.ok || !res.body) throw new Error("Failed to reach the analyst agent");
 
