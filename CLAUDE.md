@@ -115,7 +115,8 @@ api/
 
 - Add a method to `AIService` in `api/app/services/ai.py` that builds a prompt and calls `self.generate_insight(prompt)`. That returns Markdown text, or an error string; it never raises.
 - Follow the existing prompt structure: XML-style sections `<role>`, `<task>`, `<requirements>`, `<data_context>`/`<context_text>`, `<output_format>`, with explicit Markdown output and a word limit.
-- The router fetches the data through the finance or SEC service, passes it to `AIService`, and returns `{"analysis": text}`. (`/analyze_filing` returns `{"summary": ...}` and `/analyze_chart` returns a bare string. These are legacy inconsistencies; use `{"analysis": ...}` for new endpoints.)
+- The router fetches the data through the finance or SEC service, passes it to `AIService`, and returns `{"analysis": text}`. (`/analyze_filing` returns `{"summary": ...}` instead — a legacy inconsistency; use `{"analysis": ...}` for new endpoints.)
+- `analyze_chart_data(ticker, period, interval, data, image_b64=None)` supports real chart vision: the frontend captures the rendered chart (indicators, comparisons, and all) to a PNG via `html-to-image` and sends it as `chart_image`; `generate_insight()` accepts an optional `image_b64` and adds it as a sibling `inline_data` part alongside the text prompt in Gemini's `generateContent` payload. A short numeric summary (current price, period high/low) still rides along as text for precision on specific levels — vision models read shapes well but read exact axis values off pixels poorly, so the hybrid keeps pattern recognition on the image and precision on the numbers. Falls back to the old OHLCV-table-only prompt if no image is supplied, so this is a superset of the old behavior, not a breaking change to the method's signature.
 - The frontend renders the result with `react-markdown`.
 
 ### 3. Frontend fetcher

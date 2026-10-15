@@ -166,14 +166,15 @@ export async function analyzeNews(ticker: string, news: any[]) {
     return res.json();
 }
 
-export async function analyzeChart(ticker: string, period: string, interval: string) {
+export async function analyzeChart(ticker: string, period: string, interval: string, chartImage?: string) {
     const res = await apiFetch(`/ai/analyze_chart`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ticker, period, interval }),
+        body: JSON.stringify({ ticker, period, interval, chart_image: chartImage }),
     });
     if (!res.ok) throw new Error("Failed to analyze chart");
-    return res.json();
+    const data = await res.json();
+    return data.analysis as string;
 }
 
 export async function fetchForecast(ticker: string) {

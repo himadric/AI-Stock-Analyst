@@ -14,15 +14,23 @@ class AIService:
         self.model_name = "gemini-3-flash-preview"
         self.api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model_name}:generateContent?key={self.api_key}"
 
-    def generate_insight(self, prompt: str):
+    def generate_insight(self, prompt: str, image_b64: str = None, image_mime_type: str = "image/png"):
         if not self.api_key:
             return "AI service is not configured. Please check your .env file and API key."
-        
+
         try:
             # Construct the payload for the REST API
+            parts = [{"text": prompt}]
+            if image_b64:
+                # Gemini takes text and image as sibling parts in the same
+                # array, not a separate field - order doesn't matter, but
+                # text-then-image matches how the prompt below references
+                # "the chart image".
+                parts.append({"inline_data": {"mime_type": image_mime_type, "data": image_b64}})
+
             payload = {
                 "contents": [{
-                    "parts": [{"text": prompt}]
+                    "parts": parts
                 }],
                 "generationConfig": {
                     "temperature": 0.1,
@@ -112,47 +120,86 @@ Analyze the following recent news headlines for {ticker} and determine the overa
 """
         return self.generate_insight(prompt)
 
-    def analyze_chart_data(self, ticker: str, period: str, interval: str, data: list):
+    def analyze_chart_data(self, ticker: str, period: str, interval: str, data: list, image_b64: str = None):
         """
-        Analyzes historical stock data to identify trends and key levels.
+        Analyzes a ticker's price chart. When image_b64 is given (a PNG of the
+        actual rendered chart, indicators and all), this is a real vision
+        read, not a reconstruction from numbers - Gemini sees the same chart
+        the user is looking at, which is what lets it recognize shape-based
+        patterns (flags, triangles, candlestick formations) the way a human
+        analyst eyeballs a chart, rather than inferring a shape from a row-by-
+        row OHLCV table.
+
+        Still hybrid, not image-only: a short numeric summary rides along for
+        precision. Vision models are good at recognizing shapes and bad at
+        reading exact axis-calibrated values off pixels, so the model gets
+        the real current price and period high/low as text rather than being
+        asked to eyeball them - the image is for pattern recognition, the
+        numbers are for the specific levels it reports back.
+
+        Falls back to the old table-only behavior if no image is supplied
+        (e.g. a caller that hasn't been updated), so this stays a strict
+        superset rather than a breaking change to the method's contract.
         """
-        # Format data for the prompt (condense if too large, but 1.5 Flash can handle it)
-        # We'll take the last 50-100 data points to keep it focused on recent action
-        # or all of it if it's small.
-        
-        # summary of data
-        data_str = "Date, Open, High, Low, Close, Volume\n"
-        
-        # Limit to last 60 bars to ensure high signal-to-noise for the prompt
         sliced_data = data[-60:] if len(data) > 60 else data
-        
-        for row in sliced_data:
-            data_str += f"{row['date']}, {row['open']}, {row['high']}, {row['low']}, {row['close']}, {row['volume']}\n"
-            
+        closes = [row["close"] for row in sliced_data if row.get("close") is not None]
+        highs = [row["high"] for row in sliced_data if row.get("high") is not None]
+        lows = [row["low"] for row in sliced_data if row.get("low") is not None]
+
+        current_price = closes[-1] if closes else None
+        period_high = max(highs) if highs else None
+        period_low = min(lows) if lows else None
+
+        numeric_summary = (
+            f"Current price: {current_price}\n"
+            f"Period high: {period_high}\n"
+            f"Period low: {period_low}\n"
+            f"Bars shown: {len(sliced_data)} ({interval} interval, {period} period)"
+        )
+
+        if image_b64:
+            context_block = f"""
+<context_text>
+You are looking at an actual rendered price chart image for {ticker} - read it visually: the
+candlestick/line shape, any moving-average overlays, and the volume bars beneath it. Use the
+numbers below only for precision on specific price levels you report, not to re-derive the trend -
+the image already shows you that.
+
+{numeric_summary}
+</context_text>"""
+        else:
+            # Fallback path: no image, same table-based approach as before.
+            data_str = "Date, Open, High, Low, Close, Volume\n"
+            for row in sliced_data:
+                data_str += f"{row['date']}, {row['open']}, {row['high']}, {row['low']}, {row['close']}, {row['volume']}\n"
+            context_block = f"""
+<data_points>
+{data_str}
+</data_points>"""
+
         prompt = f"""
 <role>
-You are an expert Technical Analyst and Quantitative Trader. Your goal is to analyze the provided price and volume data to identify trends, momentum shifts, and potential entry/exit zones.
+You are an expert Technical Analyst and Quantitative Trader. Your goal is to analyze the provided chart to identify trends, momentum shifts, and potential entry/exit zones.
 </role>
 
 <task>
-Analyze the following time-series data for {ticker}. Provide a technical diagnostic focusing on price action, volume confirmation, and trend strength.
+Analyze the price action for {ticker}. Provide a technical diagnostic focusing on chart patterns, volume confirmation, and trend strength.
 </task>
-
-<data_points>
-{data_str} 
-</data_points>
+{context_block}
 
 <requirements>
-1. **Trend Identification**: Is the asset in an accumulation, markup, distribution, or markdown phase? Use Moving Average logic (e.g., price vs. 50-day/200-day levels if provided).
-2. **Volume Profiling**: Does volume confirm the price move? Look for "Buying/Selling Climaxes" or "Volume Divergence."
-3. **Support & Resistance**: Based on the data, identify the most significant "congestion zones" or price floors/ceilings.
-4. **Momentum Check**: Evaluate the speed of the recent move. Is it overextended or just starting?
-5. **Actionable Summary**: Provide a "Bull Case," a "Bear Case," and a specific "Key Level to Watch."
+1. **Trend Identification**: Is the asset in an accumulation, markup, distribution, or markdown phase? Note any visible moving-average relationship (price above/below its overlays, if shown).
+2. **Chart Pattern**: Name any recognizable pattern visible in the shape (e.g. ascending triangle, double top, flag, head-and-shoulders) - or say plainly if the action is too choppy for a clean pattern.
+3. **Volume Profiling**: Does volume confirm the price move? Look for "Buying/Selling Climaxes" or "Volume Divergence."
+4. **Support & Resistance**: Identify the most significant congestion zones or price floors/ceilings.
+5. **Momentum Check**: Evaluate the speed of the recent move. Is it overextended or just starting?
+6. **Actionable Summary**: Provide a "Bull Case," a "Bear Case," and a specific "Key Level to Watch."
 </requirements>
 
 <output_format>
 ### 📈 Technical Diagnostic: {ticker}
 * **Primary Trend**: [Bullish/Bearish/Neutral]
+* **Chart Pattern**: [Pattern name, or "No clean pattern"]
 * **Volume Sentiment**: [Confirming/Diverging]
 * **Key Support**: [Price Level]
 * **Key Resistance**: [Price Level]
@@ -164,8 +211,8 @@ Analyze the following time-series data for {ticker}. Provide a technical diagnos
 * **Stop-Loss Area**: [Level]
 * **Profit Target Area**: [Level]
 </output_format>
-"""        
-        return self.generate_insight(prompt)
+"""
+        return self.generate_insight(prompt, image_b64=image_b64)
 
     def analyze_valuation(self, ticker: str, metrics: dict, income_statements: list):
         # Format income statements for context

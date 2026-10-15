@@ -64,7 +64,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how it's built and [CLAUDE.
 
 - **Overview** — company profile and key metrics (with plain-English tooltips), a financial performance chart, the Future Leader score, recent SEC filings (open, AI-summarize, or index for the chat assistant's search), recent news with AI sentiment, peer comparison, and AI valuation/risk red-flag analysis. Add the ticker to your watchlist from here.
 - **Financials** — quarterly income statement, balance sheet, cash flow, and derived ratios.
-- **Chart** — price history with period/interval controls, SMA overlays, ticker comparisons, and an AI read on trend/support/resistance.
+- **Chart** — price history with period/interval controls, SMA overlays, ticker comparisons, and an AI read on trend/support/resistance. The AI actually looks at the rendered chart image — indicators and comparisons included — not just a table of the underlying numbers.
 - **Simulation** — a Monte Carlo DCF valuation: thousands of simulated paths from historical growth/margin volatility, with adjustable WACC, a growth override, and a bear-case toggle.
 - **Forecast** — analyst price targets, consensus rating, and recent upgrades/downgrades.
 - **Ownership** — the insider/institution/public split, top institutional holders, and recent insider transactions.

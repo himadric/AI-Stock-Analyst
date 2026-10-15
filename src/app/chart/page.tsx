@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { fetchStockHistory } from "@/lib/api";
 import { StockChart } from "@/components/dashboard/stock-chart";
@@ -30,6 +30,7 @@ function ChartContent() {
   
   const [loading, setLoading] = useState(true);
   const [timeframe, setTimeframe] = useState<Timeframe>("1Y");
+  const chartRef = useRef<HTMLDivElement>(null);
 
   const timeframeConfig: Record<Timeframe, { period: string; interval: string }> = {
     "1D": { period: "1d", interval: "5m" },
@@ -132,18 +133,19 @@ function ChartContent() {
                     </div>
                 ) : (
                     <>
-                    <div className="h-[500px]">
-                        <StockChart 
-                            data={data} 
-                            period={timeframeConfig[timeframe].period} 
+                    <div className="h-[500px]" ref={chartRef}>
+                        <StockChart
+                            data={data}
+                            period={timeframeConfig[timeframe].period}
                             comparisons={comparisonData}
                             indicators={selectedIndicators}
                         />
                     </div>
-                    <ChartAnalysis 
-                        ticker={ticker} 
-                        period={timeframeConfig[timeframe].period} 
-                        interval={timeframeConfig[timeframe].interval} 
+                    <ChartAnalysis
+                        ticker={ticker}
+                        period={timeframeConfig[timeframe].period}
+                        interval={timeframeConfig[timeframe].interval}
+                        chartRef={chartRef}
                     />
                     </>
                 )}

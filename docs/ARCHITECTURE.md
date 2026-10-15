@@ -257,7 +257,7 @@ All paths are prefixed with `/api`.
 | **ai** | `ai.py` → `AIService` (+ Finance/SEC services) | Gemini | |
 | `POST /ai/analyze_filing {ticker,url}` | `summarize_filing` | SEC HTML → first 30k chars | returns `{summary}` |
 | `POST /ai/analyze_news {ticker,news[]}` | `analyze_news_sentiment` | client-supplied headlines | `{analysis}` |
-| `POST /ai/analyze_chart {ticker,period,interval}` | `analyze_chart_data` | last 60 OHLCV bars | **returns a bare string** |
+| `POST /ai/analyze_chart {ticker,period,interval,chart_image?}` | `analyze_chart_data` | last 60 OHLCV bars + an optional PNG of the rendered chart | `{analysis}`; see "Chart vision" below |
 | `POST /ai/analyze_valuation {ticker}` | `analyze_valuation` | info + quarterly financials | `{analysis}` |
 | `POST /ai/analyze_risk {ticker}` | `analyze_risk` | info + financials + ownership | `{analysis}` |
 | `POST /ai/analyze_macro_market {macro_data,sector_data}` | `analyze_macro_market` | client-supplied | `{analysis}` |
@@ -489,6 +489,22 @@ It's a real service specifically because `app/agent/multi_agent.py` needs the id
 
 This is also where the multi-agent coordinator's position-aware verdict (§4.6) gets its data, and where every trade actually writes, auto-executed or human-confirmed: a human-confirmed buy calls `addPortfolioPosition()` → `POST /portfolio` with a placeholder share count (`PLACEHOLDER_BUY_SHARES` in `agent-chat.tsx`) at the ticker's live price fetched fresh at confirm time; an auto-executed buy calls `PortfolioService.add_position()` directly from `multi_agent.py` at the price already fetched for the threshold check. Sells, confirmed or auto, always resolve to `PortfolioService.sell_position()` either way, which independently fetches its own live price rather than trusting any price the coordinator saw mid-analysis.
 
+### 4.8 Chart vision
+
+`POST /ai/analyze_chart` used to be a false label: it claimed to be "chart reading" but only ever reasoned over a CSV-style text dump of the last 60 OHLCV bars - a numerical analysis, not a visual one. The chart actually on screen (`stock-chart.tsx`, a Recharts `ComposedChart` with whatever SMA overlays or comparison tickers the user has toggled on) was never seen by the model; the backend independently re-fetched its own OHLCV window with no knowledge of what was visually rendered.
+
+**What changed:** the frontend now rasterizes the chart's DOM node to a PNG (`html-to-image`'s `toPng()`, `pixelRatio: 2`) when "Summarize with AI" is clicked, and sends it as `chart_image` alongside the existing `ticker`/`period`/`interval`. `AIService.generate_insight()` gained an optional `image_b64` parameter that appends an `inline_data` part (`{"mime_type": "image/png", "data": ...}`) as a sibling of the text part in Gemini's `generateContent` payload - Gemini's REST API takes text and image as parts in the same array, not separate fields.
+
+**Hybrid, not image-only, deliberately.** Vision models are good at recognizing shapes (a head-and-shoulders, a flag, a volume climax) and bad at reading exact axis-calibrated values off pixels. `analyze_chart_data()` still computes a short numeric summary (current price, period high/low) from the OHLCV data and includes it as text alongside the image - the image drives pattern recognition, the numbers drive precision on the specific levels the model reports back (support/resistance, stop-loss area). The prompt is explicit about this division: "use the numbers below only for precision... not to re-derive the trend - the image already shows you that."
+
+**Why this is a genuinely different pattern from the rest of `AIService`, not just a richer prompt:** every other one-shot analysis (valuation, risk, filing summary) is close to "organize known facts into prose" - a bounded, templated task. Visual pattern recognition on an ambiguous chart shape is a harder, less deterministic problem, and it's the first place in this app where a model reasons over an image instead of text or structured data.
+
+**Deliberately kept to Gemini, not Claude.** `generate_insight()` is reused by every other `AIService` method, and this app's two-provider split (§4.4's "Model split") is already an explicit rule: Gemini for one-shot analysis, Claude for the tool-use agent. Using Claude here - even if it turned out to read charts better - would mean a second billed API dependency for one feature and a quiet break from a convention every other method follows. That tradeoff was considered and explicitly declined without a side-by-side quality test to justify it.
+
+**Graceful degradation, both directions.** If the frontend's capture fails for any reason (`toPng()` throws), `chartImage` is simply `undefined` and the request falls through to the old numeric-only analysis - the feature degrades to its previous behavior rather than failing the request. `analyze_chart_data()` itself kept its table-only code path for the same reason: `image_b64=None` is still a fully supported call shape, not just an internal fallback.
+
+**Also fixed while this endpoint was already being rewritten:** `analyze_chart`'s handler was `async def` while calling `get_stock_history()`, which blocks on yfinance - the exact anti-pattern CLAUDE.md's backend conventions warn against (§9's known-issues item 4 lists this file as one of the offenders). Changed to `def`. Its response also used to be a bare string instead of `{"analysis": ...}` - a documented API-shape inconsistency (known-issues item 7) - fixed in the same change, since the method's whole body was being rewritten anyway.
+
 ---
 
 ## 5. Key algorithms
@@ -579,7 +595,7 @@ Ordered roughly by priority.
 | 4 | Performance | Many `async def` handlers (in `finance.py`, `ai.py`, `watchlist.py`, `simulation.py`) call blocking yfinance, httpx, and pymongo, which blocks the event loop. | Change them to `def` so FastAPI runs them in its threadpool. |
 | 5 | Performance | `SECService()` downloads `company_tickers.json` in its constructor. It is created in `sec.py`, `ai.py`, `agent/tools.py`, and inside each `InstitutionService` (`institution.py`, `munro.py`), so a cold start makes about 5 SEC downloads. | Use a module-level shared instance or `functools.cache`. |
 | 6 | Consistency | `house.py`, `senate.py`, and `InstitutionService._get_from_db` create a new `MongoClient` per request (and the first two skip `certifi`). | Use `app.db.db.get_db()`. |
-| 7 | API shape | AI responses are inconsistent: `{summary}`, `{analysis}`, and a bare string for `/analyze_chart`. | Standardise on `{analysis}`. |
+| 7 | API shape | AI responses are inconsistent: `{summary}` for `/analyze_filing` vs. `{analysis}` everywhere else. (`/analyze_chart` used to return a bare string - fixed when it gained image support, since that endpoint was already being rewritten.) | Standardise `/analyze_filing` on `{analysis}` too. |
 | 8 | ~~Data quality~~ | ✅ **Fixed.** `get_economic_data()` now fetches live GDP/unemployment/CPI/Fed-rate data from the FRED API (`FRED_API_KEY`), falling back to the old hardcoded 2024 snapshot if the key is unset or a fetch fails. | — |
 | 9 | Routing | The Next route `/api/heatmap/...` shares the `/api` namespace with the FastAPI proxy and depends on filesystem-first precedence. | Move it to FastAPI, or to a non-`/api` path. |
 | 10 | Frontend | 84 `no-explicit-any` and 72 unused-variable lint errors. API responses are untyped. `app/page.tsx` is about 690 lines. | Add response interfaces in `lib/types.ts`, and split the overview into components. |
