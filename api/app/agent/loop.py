@@ -8,6 +8,7 @@ from AIService's one-shot Gemini prompts. Tool-calling loops are a
 different shape of problem than "fill in this template," and Claude's
 tool-use API is the better fit for it.
 """
+import json
 import os
 from app.agent.tools import TOOLS, dispatch
 from app.agent import mcp_client
@@ -46,6 +47,41 @@ need one; only reach for a skill when its description genuinely matches.
 """
 
 
+def _search_filings_to_citable_blocks(result_json: str):
+    """
+    Converts search_filings' dispatch() result (a JSON string, like every
+    other tool's) into Anthropic `search_result` content blocks so the
+    model's answer can cite the exact chunk a claim came from - not just
+    paraphrase an opaque blob of filing text. Falls back to the plain
+    string (today's behavior, no citations) if parsing fails or there are
+    no matches, so a malformed/truncated/error result never breaks the
+    turn - it just loses citations for that one call.
+    """
+    try:
+        data = json.loads(result_json)
+    except (TypeError, ValueError):
+        return result_json
+
+    matches = data.get("matches") if isinstance(data, dict) else None
+    if not matches:
+        return result_json
+
+    blocks = []
+    for m in matches:
+        text = m.get("chunk_text")
+        if not text:
+            continue
+        title = f"{data.get('ticker', '')} {m.get('form_type', '')} ({m.get('filed_date', '')})".strip()
+        blocks.append({
+            "type": "search_result",
+            "source": m.get("url") or "unknown",
+            "title": title or "SEC filing",
+            "content": [{"type": "text", "text": text}],
+            "citations": {"enabled": True},
+        })
+    return blocks or result_json
+
+
 def run_agent_turn(messages: list[dict]):
     """
     Runs the agent loop for one user turn. Yields plain dicts (JSON-serializable
@@ -54,8 +90,17 @@ def run_agent_turn(messages: list[dict]):
       {"type": "tool_start", "tool": "...", "args": {...}}
       {"type": "tool_end", "tool": "..."}
       {"type": "watchlist_proposal", "ticker": "...", "reason": "..."}
+      {"type": "citation", "cited_text": "...", "source": "...", "title": "..."}
       {"type": "error", "message": "..."}
       {"type": "done"}
+
+    citation events come from search_filings results specifically - see
+    _search_filings_to_citable_blocks(). Anthropic's citations feature
+    attaches structured source info to spans of the model's own generated
+    text as it streams, via `search_result` content blocks with citations
+    enabled in the tool_result; every other tool's result stays a plain
+    string, unchanged, so this only applies where it's actually meaningful
+    (grounding a claim in a specific filing excerpt).
     """
     api_key = os.getenv("ANTHROPIC_API_KEY")
     if not api_key:
@@ -91,6 +136,14 @@ def run_agent_turn(messages: list[dict]):
                 for event in stream:
                     if event.type == "text":
                         yield {"type": "text", "text": event.text}
+                    elif event.type == "citation":
+                        citation = event.citation
+                        yield {
+                            "type": "citation",
+                            "cited_text": getattr(citation, "cited_text", ""),
+                            "source": getattr(citation, "source", None),
+                            "title": getattr(citation, "title", None),
+                        }
                 final_message = stream.get_final_message()
         except Exception as e:
             yield {"type": "error", "message": f"Analyst agent error: {e}"}
@@ -115,7 +168,8 @@ def run_agent_turn(messages: list[dict]):
                 reason = (block.input or {}).get("reason", "")
                 yield {"type": "watchlist_proposal", "ticker": ticker.upper(), "reason": reason}
 
-            tool_results.append({"type": "tool_result", "tool_use_id": block.id, "content": result_text})
+            tool_content = _search_filings_to_citable_blocks(result_text) if block.name == "search_filings" else result_text
+            tool_results.append({"type": "tool_result", "tool_use_id": block.id, "content": tool_content})
 
         conversation.append({"role": "user", "content": tool_results})
 

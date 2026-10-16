@@ -34,6 +34,12 @@ interface SubagentEntry {
     expanded?: boolean;
 }
 
+interface Citation {
+    citedText: string;
+    source: string | null;
+    title: string | null;
+}
+
 interface DisplayMessage {
     role: "user" | "assistant";
     content: string;
@@ -46,6 +52,11 @@ interface DisplayMessage {
     // back to. Separate from what actually gets sent to the backend (see
     // send()), which builds its own Anthropic content-block array.
     image?: string;
+    // From search_filings results with citations enabled (Anthropic's
+    // citations feature) - real source grounding, not the model's own
+    // claim. Deduped by (source, citedText) as they stream in, since the
+    // same chunk can back more than one sentence in the final answer.
+    citations?: Citation[];
 }
 
 interface WatchlistProposal {
@@ -218,6 +229,13 @@ export function AgentChat() {
                     });
                 } else if (event.type === "watchlist_proposal") {
                     setProposals((prev) => [...prev, { ticker: event.ticker, reason: event.reason, status: "pending" }]);
+                } else if (event.type === "citation") {
+                    updateLast((m) => {
+                        const existing = m.citations || [];
+                        const isDupe = existing.some((c) => c.source === event.source && c.citedText === event.cited_text);
+                        if (isDupe) return m;
+                        return { ...m, citations: [...existing, { citedText: event.cited_text, source: event.source, title: event.title }] };
+                    });
                 } else if (event.type === "error") {
                     assistantText += (assistantText ? "\n\n" : "") + `⚠️ ${event.message}`;
                     updateLast((m) => ({ ...m, content: assistantText }));
@@ -559,6 +577,31 @@ export function AgentChat() {
                                         // previously showed nothing at all once a tool trace existed,
                                         // which looked identical to a hang.
                                         m.streaming && <Loader2 className="h-4 w-4 animate-spin" />
+                                    )}
+                                    {!m.streaming && m.citations && m.citations.length > 0 && (
+                                        // Real source grounding (Anthropic's citations feature, via
+                                        // search_filings) - each one is a specific filing excerpt the
+                                        // model actually drew on, not a claim to take on faith. Shown
+                                        // only once the turn finishes, not live, since the dedup order
+                                        // can shift mid-stream and a footnote list reads better finished.
+                                        <div className="mt-2 pt-2 border-t border-border/50">
+                                            <p className="text-xs font-medium text-muted-foreground mb-1">
+                                                Sources ({m.citations.length})
+                                            </p>
+                                            <ol className="space-y-1 text-xs text-muted-foreground list-decimal list-inside">
+                                                {m.citations.map((c, ci) => (
+                                                    <li key={ci}>
+                                                        {c.source ? (
+                                                            <a href={c.source} target="_blank" rel="noopener noreferrer" className="underline hover:text-foreground" title={c.citedText}>
+                                                                {c.title || c.source}
+                                                            </a>
+                                                        ) : (
+                                                            <span title={c.citedText}>{c.title || "Source"}</span>
+                                                        )}
+                                                    </li>
+                                                ))}
+                                            </ol>
+                                        </div>
                                     )}
                                 </>
                             ) : (
