@@ -139,7 +139,12 @@ explicit recommendation and call propose_trade to surface it: if they hold a pos
 hold-vs-sell against their actual cost basis and gain/loss; if they don't hold one, frame it as an \
 initial buy-or-pass decision. Call propose_trade only when your synthesis actually supports a buy or \
 sell - if the right call is to hold or do nothing, say so in your text and don't call the tool. \
-propose_trade only shows the user a confirmation card; it never trades anything itself."""
+propose_trade only shows the user a confirmation card; it never trades anything itself.
+
+If a chart image is attached, read it directly - the shape, any visible indicators, the overall \
+trend - and factor what you see into the synthesis: does it support, complicate, or contradict what \
+the four research angles found? None of the four subagents see this image; you're the only one who \
+does, so don't assume their reports already account for it."""
 
 PROPOSE_TRADE_TOOL = {
     "name": "propose_trade",
@@ -277,7 +282,7 @@ def _run_subagent(ticker: str, persona: dict, event_queue: "queue.Queue"):
         event_queue.put({"type": "agent_done", "agent_id": agent_id, "full_report": f"(error: {e})"})
 
 
-def run_multi_agent_analysis(ticker: str):
+def run_multi_agent_analysis(ticker: str, image_b64: str | None = None, image_media_type: str = "image/png"):
     """
     Yields events for POST /api/agent/multi_analysis's SSE stream:
       {"type": "agent_start", "agent_id": ..., "label": ...}
@@ -301,6 +306,17 @@ def run_multi_agent_analysis(ticker: str):
     friction without meaningfully protecting the user, so dispatch() for
     propose_trade's result calls the portfolio endpoints directly instead of
     waiting for a confirm click.
+
+    image_b64, if given, is an optional chart screenshot the user attached
+    (same base64-PNG shape the chat loop's pasted-image support uses). It
+    goes to the coordinator's synthesis call only, not to any of the four
+    subagents: each subagent is its own concurrent Claude call with its own
+    narrow tool slice, and three of the four personas (smart-money,
+    sentiment, filings) have no real use for a chart image, so handing it to
+    all four would be redundant vision cost for no benefit. The coordinator
+    is the one place a single attached image naturally fits - it already
+    combines all four reports into one synthesis, so the image becomes one
+    more thing it weighs alongside them, not a fifth parallel research angle.
     """
     client, error = _get_client()
     if error:
@@ -341,13 +357,21 @@ def run_multi_agent_analysis(ticker: str):
         if position else
         f"\n\nThe user does not currently hold {ticker.upper()}."
     )
+    synthesis_text = f"Ticker: {ticker.upper()}\n\n{report_block}{position_block}"
+    coordinator_content = synthesis_text
+    if image_b64:
+        coordinator_content = [
+            {"type": "text", "text": synthesis_text},
+            {"type": "image", "source": {"type": "base64", "media_type": image_media_type, "data": image_b64}},
+        ]
+
     try:
         with client.messages.stream(
             model=MODEL,
             max_tokens=MAX_TOKENS * 2,
             system=COORDINATOR_SYSTEM_PROMPT,
             tools=[PROPOSE_TRADE_TOOL],
-            messages=[{"role": "user", "content": f"Ticker: {ticker.upper()}\n\n{report_block}{position_block}"}],
+            messages=[{"role": "user", "content": coordinator_content}],
         ) as stream:
             for event in stream:
                 if event.type == "text":
