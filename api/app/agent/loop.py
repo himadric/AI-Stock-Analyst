@@ -8,8 +8,10 @@ from AIService's one-shot Gemini prompts. Tool-calling loops are a
 different shape of problem than "fill in this template," and Claude's
 tool-use API is the better fit for it.
 """
+import json
 import os
-from app.agent.tools import TOOLS, dispatch
+import re
+from app.agent.tools import TOOLS, TOOL_DISPATCH, dispatch
 from app.agent import mcp_client
 from app.agent import skills
 
@@ -46,6 +48,107 @@ need one; only reach for a skill when its description genuinely matches.
 """
 
 
+def _search_filings_to_citable_blocks(result_json: str):
+    """
+    Converts search_filings' dispatch() result (a JSON string, like every
+    other tool's) into Anthropic `search_result` content blocks so the
+    model's answer can cite the exact chunk a claim came from - not just
+    paraphrase an opaque blob of filing text. Falls back to the plain
+    string (today's behavior, no citations) if parsing fails or there are
+    no matches, so a malformed/truncated/error result never breaks the
+    turn - it just loses citations for that one call.
+    """
+    try:
+        data = json.loads(result_json)
+    except (TypeError, ValueError):
+        return result_json
+
+    matches = data.get("matches") if isinstance(data, dict) else None
+    if not matches:
+        return result_json
+
+    blocks = []
+    for m in matches:
+        text = m.get("chunk_text")
+        if not text:
+            continue
+        title = f"{data.get('ticker', '')} {m.get('form_type', '')} ({m.get('filed_date', '')})".strip()
+        blocks.append({
+            "type": "search_result",
+            "source": m.get("url") or "unknown",
+            "title": title or "SEC filing",
+            "content": [{"type": "text", "text": text}],
+            "citations": {"enabled": True},
+        })
+    return blocks or result_json
+
+
+_SEARCH_HIT_RE = re.compile(r"^\d+\.\s+(.+?)\n\s*URL:\s+(\S+)\n\s*Summary:\s+(.+?)(?=\n\d+\.\s|\Z)", re.DOTALL | re.MULTILINE)
+
+
+def _mcp_result_to_citable_blocks(args: dict, result_text: str):
+    """
+    Citable conversion for an MCP tool's result - detected by what the
+    text *looks like*, not by which tool produced it. This app deliberately
+    never names a specific MCP tool anywhere else (mcp_client.py's module
+    docstring: nothing here names "search", "fetch_content", or
+    "expand_link" directly), since the server's own tool list can change
+    without a code change here - detecting citability by format instead of
+    by hardcoded tool name keeps that property true for citations too.
+
+    dispatch()'s MCP fallback always wraps the raw text as
+    json.dumps({"result": "..."}), so that's unwrapped first.
+
+    Two recognized shapes, both currently true of the DuckDuckGo server's
+    actual output (verified live, not assumed):
+    - A numbered list of search hits ("N. <title>\\n   URL: <url>\\n
+      Summary: <text>") - DuckDuckGo's search tool's current format.
+      Becomes one search_result block per hit.
+    - A single fetched page, with no URL in the text at all - the tool
+      call itself named the page (an uncertain MCP tool naming its input
+      "url" is the one soft assumption here, not provider-specific).
+      Becomes one search_result block sourced from that input.
+
+    Falls back to the plain result_text unchanged - today's no-citations
+    behavior - if the JSON can't be parsed, the truncated-result shape
+    dispatch() uses instead of {"result": ...} shows up, or neither shape
+    matches. Citations are additive here too, never a new failure mode.
+    """
+    try:
+        data = json.loads(result_text)
+    except (TypeError, ValueError):
+        return result_text
+
+    text = data.get("result") if isinstance(data, dict) else None
+    if not isinstance(text, str) or not text.strip():
+        return result_text
+
+    entries = _SEARCH_HIT_RE.findall(text)
+    if entries:
+        return [
+            {
+                "type": "search_result",
+                "source": url,
+                "title": title.strip(),
+                "content": [{"type": "text", "text": summary.strip()}],
+                "citations": {"enabled": True},
+            }
+            for title, url, summary in entries
+        ]
+
+    url = args.get("url") if isinstance(args, dict) else None
+    if url:
+        return [{
+            "type": "search_result",
+            "source": url,
+            "title": url,
+            "content": [{"type": "text", "text": text}],
+            "citations": {"enabled": True},
+        }]
+
+    return result_text
+
+
 def run_agent_turn(messages: list[dict]):
     """
     Runs the agent loop for one user turn. Yields plain dicts (JSON-serializable
@@ -54,8 +157,18 @@ def run_agent_turn(messages: list[dict]):
       {"type": "tool_start", "tool": "...", "args": {...}}
       {"type": "tool_end", "tool": "..."}
       {"type": "watchlist_proposal", "ticker": "...", "reason": "..."}
+      {"type": "citation", "cited_text": "...", "source": "...", "title": "..."}
       {"type": "error", "message": "..."}
       {"type": "done"}
+
+    citation events come from search_filings results and from MCP tool
+    results (web search) - see _search_filings_to_citable_blocks() and
+    _mcp_result_to_citable_blocks(). Anthropic's citations feature attaches
+    structured source info to spans of the model's own generated text as it
+    streams, via `search_result` content blocks with citations enabled in
+    the tool_result; every other static tool's result stays a plain string,
+    unchanged, so this only applies where it's actually meaningful -
+    grounding a claim in a specific filing excerpt or web page.
     """
     api_key = os.getenv("ANTHROPIC_API_KEY")
     if not api_key:
@@ -91,6 +204,14 @@ def run_agent_turn(messages: list[dict]):
                 for event in stream:
                     if event.type == "text":
                         yield {"type": "text", "text": event.text}
+                    elif event.type == "citation":
+                        citation = event.citation
+                        yield {
+                            "type": "citation",
+                            "cited_text": getattr(citation, "cited_text", ""),
+                            "source": getattr(citation, "source", None),
+                            "title": getattr(citation, "title", None),
+                        }
                 final_message = stream.get_final_message()
         except Exception as e:
             yield {"type": "error", "message": f"Analyst agent error: {e}"}
@@ -115,7 +236,17 @@ def run_agent_turn(messages: list[dict]):
                 reason = (block.input or {}).get("reason", "")
                 yield {"type": "watchlist_proposal", "ticker": ticker.upper(), "reason": reason}
 
-            tool_results.append({"type": "tool_result", "tool_use_id": block.id, "content": result_text})
+            if block.name == "search_filings":
+                tool_content = _search_filings_to_citable_blocks(result_text)
+            elif block.name not in TOOL_DISPATCH:
+                # Not one of this file's static tools, so it came from the
+                # MCP server (dispatch()'s fallback path) - try to make it
+                # citable the same way, same detect-by-format approach as
+                # above, not a hardcoded tool name.
+                tool_content = _mcp_result_to_citable_blocks(block.input or {}, result_text)
+            else:
+                tool_content = result_text
+            tool_results.append({"type": "tool_result", "tool_use_id": block.id, "content": tool_content})
 
         conversation.append({"role": "user", "content": tool_results})
 

@@ -439,6 +439,9 @@ export type AgentEvent =
     | { type: "tool_start"; tool: string; args: Record<string, unknown> }
     | { type: "tool_end"; tool: string }
     | { type: "watchlist_proposal"; ticker: string; reason: string }
+    // From search_filings results specifically - see loop.py's
+    // _search_filings_to_citable_blocks(). source is a sec.gov filing URL.
+    | { type: "citation"; cited_text: string; source: string | null; title: string | null }
     | { type: "error"; message: string }
     | { type: "done" };
 
