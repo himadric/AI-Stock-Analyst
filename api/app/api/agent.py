@@ -27,6 +27,7 @@ class ChatRequest(BaseModel):
 
 class MultiAnalysisRequest(BaseModel):
     ticker: str
+    chart_image: str | None = None  # base64 PNG, optionally a data: URL - see multi_agent.py
 
 
 class IngestFilingRequest(BaseModel):
@@ -59,9 +60,15 @@ def chat(request: ChatRequest):
 # call mid-conversation. See agent/multi_agent.py's module docstring for why.
 @router.post("/multi_analysis")
 def multi_analysis(request: MultiAnalysisRequest):
+    image_b64 = request.chart_image
+    if image_b64 and image_b64.startswith("data:"):
+        # Same stripping as /ai/analyze_chart - Anthropic's inline image
+        # source wants raw base64, not a data: URL prefix.
+        image_b64 = image_b64.split(",", 1)[-1]
+
     def event_stream():
         try:
-            for event in run_multi_agent_analysis(request.ticker):
+            for event in run_multi_agent_analysis(request.ticker, image_b64=image_b64):
                 yield f"data: {json.dumps(event)}\n\n"
         except Exception as e:
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"

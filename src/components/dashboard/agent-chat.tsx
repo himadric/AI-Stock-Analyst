@@ -263,11 +263,17 @@ export function AgentChat() {
     async function runMultiAgentAnalysis() {
         if (loading) return;
 
+        // Reuses whatever image is already attached from a paste (same
+        // state send() uses) - goes to the coordinator's synthesis only,
+        // not to the four subagents. See streamMultiAgentAnalysis's comment.
+        const chartImage = attachedImage ?? undefined;
+
         setMessages((prev) => [
             ...prev,
-            { role: "user", content: `Run full multi-agent analysis on ${ticker}` },
+            { role: "user", content: `Run full multi-agent analysis on ${ticker}`, image: chartImage },
             { role: "assistant", content: "", subagents: [], streaming: true },
         ]);
+        setAttachedImage(null);
         setLoading(true);
         scrollToBottom();
 
@@ -283,7 +289,7 @@ export function AgentChat() {
         }
 
         try {
-            for await (const event of streamMultiAgentAnalysis(ticker, controller.signal)) {
+            for await (const event of streamMultiAgentAnalysis(ticker, controller.signal, chartImage)) {
                 if (event.type === "text") {
                     assistantText += event.text;
                     updateLast((m) => ({ ...m, content: assistantText }));
@@ -648,7 +654,7 @@ export function AgentChat() {
             {attachedImage && (
                 <div className="flex items-center gap-2 pt-2 border-t">
                     <img src={attachedImage} alt="Pasted image to send" className="h-12 w-12 rounded border object-cover" />
-                    <span className="text-xs text-muted-foreground flex-1">Image attached — will be sent with your next message</span>
+                    <span className="text-xs text-muted-foreground flex-1">Image attached — will be sent with your next message or multi-agent analysis</span>
                     <Button type="button" variant="ghost" size="icon" className="h-6 w-6" onClick={() => setAttachedImage(null)}>
                         <X className="h-3.5 w-3.5" />
                     </Button>

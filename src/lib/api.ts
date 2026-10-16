@@ -497,11 +497,15 @@ export async function* streamAgentChat(messages: AgentChatMessage[], signal?: Ab
 // Same hand-rolled SSE parsing as streamAgentChat, for the same reason
 // (EventSource can't carry the Authorization header). Takes a ticker, not a
 // message history — this is a dedicated action, not a conversational turn.
-export async function* streamMultiAgentAnalysis(ticker: string, signal?: AbortSignal): AsyncGenerator<MultiAgentEvent> {
+// chartImage, if given, goes to the coordinator's synthesis call only - not
+// to any of the four subagents (three of the four personas have no real use
+// for a chart image, so handing it to all four would be redundant vision
+// cost). See multi_agent.py's run_multi_agent_analysis docstring.
+export async function* streamMultiAgentAnalysis(ticker: string, signal?: AbortSignal, chartImage?: string): AsyncGenerator<MultiAgentEvent> {
     const res = await apiFetch(`/agent/multi_analysis`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ticker }),
+        body: JSON.stringify({ ticker, chart_image: chartImage }),
         signal,
     });
     if (!res.ok || !res.body) throw new Error("Failed to reach the analyst agent");
