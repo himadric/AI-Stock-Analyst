@@ -73,17 +73,28 @@ async def _discover() -> list[dict]:
 def discover_tools() -> list[dict]:
     """
     Anthropic-tool-use-schema list of whatever the MCP server currently
-    exposes. Cached after the first successful call; on failure, falls back
-    to that cache if one exists, else returns [] (the agent just runs
-    without these tools for this turn rather than failing the whole turn).
+    exposes. Cached after the first successful call and reused for the
+    life of this process - a warm instance has no reason to re-spawn the
+    server and re-query it on every single turn when the answer won't
+    change. (This was previously the stated intent but not what the code
+    actually did - it re-discovered unconditionally every call, with the
+    cache only ever read as a failure fallback. Confirmed as the cause of
+    an intermittent partial prompt-cache miss: the tools array is itself
+    part of a cache_control breakpoint in loop.py, and a live subprocess
+    call on every turn - even one that normally returns identical content
+    - isn't the same guarantee as a value that's actually fixed for the
+    process's lifetime.) On failure before any successful discovery,
+    returns [] (the agent just runs without these tools for this turn
+    rather than failing the whole turn) - nothing cached yet to fall back to.
     """
     global _cached_tool_schemas
+    if _cached_tool_schemas is not None:
+        return _cached_tool_schemas
     try:
         _cached_tool_schemas = anyio.run(_discover)
     except Exception as e:
         print(f"[mcp discover_tools] failed: {type(e).__name__}: {e}")
-        if _cached_tool_schemas is None:
-            return []
+        return []
     return _cached_tool_schemas
 
 
