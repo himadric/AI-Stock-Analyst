@@ -395,6 +395,24 @@ Verified live: asked to check a ticker's filings for red flags before a watchlis
 
 **Prompt caching.** `SYSTEM_PROMPT` (rules + the Skills catalog) and the tools list are identical, unchanged text on every one of the loop's (up to 8) internal rounds, and on every later message in the same conversation - a real, substantial block of tokens (verified live: 6,382 of them) resent as-is each time otherwise. `run_agent_turn()` builds `cached_system`/`cached_tools` once per call, each with an Anthropic `cache_control: {"type": "ephemeral"}` breakpoint - one on the system text block, one on the *last* tool in the array. A single breakpoint caches everything before it in the request, not just the block it's attached to, so the one on the last tool covers the whole tools array.
 
+```mermaid
+sequenceDiagram
+    participant R as run_agent_turn (loop.py)
+    participant A as Anthropic API
+
+    Note over R,A: Round 1 - cold start (no conversation in<br/>the last 5 min has sent this exact prefix)
+    R->>A: system=[...,cache_control] + tools=[...,cache_control]<br/>+ messages (just the user's question)
+    A->>A: process system + tools (6,382 tokens) - no cached<br/>match - and store that processed prefix
+    A-->>R: answer + usage: cache_creation_input_tokens=6382,<br/>cache_read_input_tokens=0
+
+    Note over R,A: Round 2 - same internal loop, or a later<br/>message in the same conversation
+    R->>A: same system=[...,cache_control] + tools=[...,cache_control]<br/>(byte-identical) + messages (grown by the prior round)
+    A->>A: prefix matches the stored one from round 1 -<br/>reuse it, skip reprocessing those 6,382 tokens
+    A-->>R: answer + usage: cache_creation_input_tokens=0,<br/>cache_read_input_tokens=6382
+```
+
+The two rounds send the *same request shape* - what changes is entirely server-side, based on whether a matching prefix is already cached from a request in roughly the last 5 minutes. `cache_creation_input_tokens` and `cache_read_input_tokens` in the response are how `loop.py` (and the "N tokens read from cache" line in the UI) knows which happened, without needing to track cache state itself.
+
 Verified against the installed SDK's own types before building anything, the same discipline as the citations and Gemini/Pinecone work above: `message_create_params.py`'s `system` field accepts `Union[str, Iterable[TextBlockParam]]`, and both `TextBlockParam` and `ToolParam` carry an optional `cache_control` field directly - confirming a cache breakpoint can sit on the system prompt and on an individual tool, not just on message content. `Usage` (every response's `usage` field) exposes `cache_creation_input_tokens` and `cache_read_input_tokens` directly, which `run_agent_turn()` forwards as a `{"type": "usage", ...}` SSE event per round - `agent-chat.tsx` renders it as a small "N tokens read from cache" line under the answer, the same demo-visible-metadata pattern citations already established.
 
 Verified live, twice. First, within one multi-tool-call question: round 1 showed `cache_creation_input_tokens=6382, cache_read_input_tokens=0` (the cold-start creation); round 2 of the *same* question showed `cache_creation_input_tokens=0, cache_read_input_tokens=6382` - the exact same number, confirming the whole cached prefix was reused, not reprocessed, not an approximation. Second, across separate requests: a brand-new conversation, run minutes after the first test, still hit that same cache (every round read 6,382 tokens, none created) - proving the cache persists across independent `run_agent_turn()` calls within its 5-minute TTL, not just within one call's internal loop. `multi_agent.py`'s four concurrent subagent calls and its coordinator call aren't cached yet - each already has its own distinct system prompt and filtered tool slice, so this would need the same treatment applied per-persona rather than reused as-is; a natural next step, not yet done.
