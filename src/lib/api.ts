@@ -442,6 +442,11 @@ export type AgentEvent =
     // From search_filings results specifically - see loop.py's
     // _search_filings_to_citable_blocks(). source is a sec.gov filing URL.
     | { type: "citation"; cited_text: string; source: string | null; title: string | null }
+    // Prompt caching in action, one per internal tool-call round - see
+    // loop.py's run_agent_turn docstring. cache_read_input_tokens > 0 means
+    // that many tokens (the system prompt + tool schemas) were reused from
+    // cache instead of reprocessed.
+    | { type: "usage"; input_tokens: number; cache_creation_input_tokens: number; cache_read_input_tokens: number; output_tokens: number }
     | { type: "error"; message: string }
     | { type: "done" };
 
