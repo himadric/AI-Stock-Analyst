@@ -158,6 +158,7 @@ def run_agent_turn(messages: list[dict]):
       {"type": "tool_end", "tool": "..."}
       {"type": "watchlist_proposal", "ticker": "...", "reason": "..."}
       {"type": "citation", "cited_text": "...", "source": "...", "title": "..."}
+      {"type": "usage", "input_tokens": N, "cache_creation_input_tokens": N, "cache_read_input_tokens": N, "output_tokens": N}
       {"type": "error", "message": "..."}
       {"type": "done"}
 
@@ -169,6 +170,19 @@ def run_agent_turn(messages: list[dict]):
     the tool_result; every other static tool's result stays a plain string,
     unchanged, so this only applies where it's actually meaningful -
     grounding a claim in a specific filing excerpt or web page.
+
+    usage events report prompt caching in action, one per internal turn.
+    SYSTEM_PROMPT and the tools list are the same, unchanged text on every
+    one of this loop's (up to 8) internal rounds and on every subsequent
+    user message in the same conversation - a real, substantial block of
+    tokens (rules, the skills catalog, 30+ tool schemas) resent as-is each
+    time. Both carry an Anthropic `cache_control: {"type": "ephemeral"}`
+    breakpoint (on the system block and on the last tool, which caches
+    everything up to and including it) so Claude reuses that cached prefix
+    instead of reprocessing it: the first round in a conversation creates
+    the cache (`cache_creation_input_tokens > 0`), and every round after
+    reads from it (`cache_read_input_tokens > 0`, billed far cheaper than a
+    normal input token) until the cache's 5-minute TTL lapses.
     """
     api_key = os.getenv("ANTHROPIC_API_KEY")
     if not api_key:
@@ -192,13 +206,26 @@ def run_agent_turn(messages: list[dict]):
     # model, with no per-tool wrapper code on this side - see mcp_client.py.
     all_tools = TOOLS + mcp_client.discover_tools()
 
+    # Prompt caching: SYSTEM_PROMPT and the tools list are identical, as-is,
+    # on every internal round below and on every later message in the same
+    # conversation - a cache_control breakpoint tells Claude to reuse that
+    # prefix instead of reprocessing it each time. One breakpoint on the
+    # system block; one on the last tool, which caches the whole tools
+    # array up to and including it (Anthropic's cache_control semantics -
+    # a single breakpoint covers everything before it in the request, not
+    # just the block it's attached to).
+    cached_system = [{"type": "text", "text": SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}}]
+    cached_tools = all_tools
+    if all_tools:
+        cached_tools = [*all_tools[:-1], {**all_tools[-1], "cache_control": {"type": "ephemeral"}}]
+
     for turn in range(MAX_TOOL_TURNS):
         try:
             with client.messages.stream(
                 model=MODEL,
                 max_tokens=MAX_TOKENS,
-                system=SYSTEM_PROMPT,
-                tools=all_tools,
+                system=cached_system,
+                tools=cached_tools,
                 messages=conversation,
             ) as stream:
                 for event in stream:
@@ -216,6 +243,15 @@ def run_agent_turn(messages: list[dict]):
         except Exception as e:
             yield {"type": "error", "message": f"Analyst agent error: {e}"}
             return
+
+        usage = final_message.usage
+        yield {
+            "type": "usage",
+            "input_tokens": usage.input_tokens,
+            "cache_creation_input_tokens": usage.cache_creation_input_tokens or 0,
+            "cache_read_input_tokens": usage.cache_read_input_tokens or 0,
+            "output_tokens": usage.output_tokens,
+        }
 
         conversation.append({"role": "assistant", "content": final_message.content})
 

@@ -3,7 +3,7 @@
 import { useRef, useState, type ClipboardEvent } from "react";
 import { useSearchParams } from "next/navigation";
 import ReactMarkdown from "react-markdown";
-import { Bot, Check, ChevronDown, ChevronRight, Loader2, Send, Sparkles, Square, User, Users, Wrench, X } from "lucide-react";
+import { Bot, Check, ChevronDown, ChevronRight, Loader2, Send, Sparkles, Square, User, Users, Wrench, X, Zap } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -57,6 +57,12 @@ interface DisplayMessage {
     // claim. Deduped by (source, citedText) as they stream in, since the
     // same chunk can back more than one sentence in the final answer.
     citations?: Citation[];
+    // Prompt caching stats, summed across this message's internal tool-call
+    // rounds (a single question can span several). cacheCreated is only
+    // ever non-zero on the round that first creates the cache; cacheRead
+    // is the system prompt + tool schemas reused from cache on every round
+    // after that, in this conversation or an earlier one within the TTL.
+    usage?: { cacheCreated: number; cacheRead: number };
 }
 
 interface WatchlistProposal {
@@ -235,6 +241,17 @@ export function AgentChat() {
                         const isDupe = existing.some((c) => c.source === event.source && c.citedText === event.cited_text);
                         if (isDupe) return m;
                         return { ...m, citations: [...existing, { citedText: event.cited_text, source: event.source, title: event.title }] };
+                    });
+                } else if (event.type === "usage") {
+                    updateLast((m) => {
+                        const prev = m.usage || { cacheCreated: 0, cacheRead: 0 };
+                        return {
+                            ...m,
+                            usage: {
+                                cacheCreated: prev.cacheCreated + event.cache_creation_input_tokens,
+                                cacheRead: prev.cacheRead + event.cache_read_input_tokens,
+                            },
+                        };
                     });
                 } else if (event.type === "error") {
                     assistantText += (assistantText ? "\n\n" : "") + `⚠️ ${event.message}`;
@@ -577,6 +594,21 @@ export function AgentChat() {
                                         // previously showed nothing at all once a tool trace existed,
                                         // which looked identical to a hang.
                                         m.streaming && <Loader2 className="h-4 w-4 animate-spin" />
+                                    )}
+                                    {!m.streaming && m.usage && (m.usage.cacheCreated > 0 || m.usage.cacheRead > 0) && (
+                                        // Prompt caching made visible - the system prompt + tool
+                                        // schemas (thousands of tokens, identical on every round)
+                                        // reused from cache instead of reprocessed. cacheCreated is
+                                        // normally only non-zero the first time in a while this
+                                        // conversation (or an earlier one, within the cache's 5-minute
+                                        // TTL) sent that prefix; cacheRead is every round after that.
+                                        <p className="mt-2 text-xs text-muted-foreground flex items-center gap-1">
+                                            <Zap className="h-3 w-3 text-amber-500" />
+                                            {[
+                                                m.usage.cacheCreated > 0 ? `${m.usage.cacheCreated.toLocaleString()} tokens cached` : null,
+                                                m.usage.cacheRead > 0 ? `${m.usage.cacheRead.toLocaleString()} tokens read from cache` : null,
+                                            ].filter(Boolean).join(" · ")}
+                                        </p>
                                     )}
                                     {!m.streaming && m.citations && m.citations.length > 0 && (
                                         // Real source grounding (Anthropic's citations feature, via
