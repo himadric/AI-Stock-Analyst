@@ -539,3 +539,47 @@ export async function* streamMultiAgentAnalysis(ticker: string, signal?: AbortSi
     }
 }
 
+// Prompt Injection Lab (see api/app/agent/injection_lab.py) — a dedicated
+// demo action, not part of the regular chat turn. Runs one scenario in one
+// arm (defenses on or off) and reports whether the embedded instruction in
+// the synthetic tool result worked.
+export type InjectionScenario = "filing_summary" | "web_research";
+
+export type InjectionDemoEvent =
+    | { type: "text"; text: string }
+    | { type: "verdict"; attack_succeeded: boolean; detail: string }
+    | { type: "error"; message: string }
+    | { type: "done" };
+
+// Same hand-rolled SSE parsing as streamAgentChat, for the same reason
+// (EventSource can't carry the Authorization header).
+export async function* streamInjectionDemo(scenario: InjectionScenario, defensesOn: boolean, signal?: AbortSignal): AsyncGenerator<InjectionDemoEvent> {
+    const res = await apiFetch(`/agent/injection_demo`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scenario, defenses_on: defensesOn }),
+        signal,
+    });
+    if (!res.ok || !res.body) throw new Error("Failed to reach the injection lab");
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        let sepIndex;
+        while ((sepIndex = buffer.indexOf("\n\n")) !== -1) {
+            const chunk = buffer.slice(0, sepIndex);
+            buffer = buffer.slice(sepIndex + 2);
+            const line = chunk.split("\n").find((l) => l.startsWith("data: "));
+            if (line) {
+                yield JSON.parse(line.slice(6)) as InjectionDemoEvent;
+            }
+        }
+    }
+}
+

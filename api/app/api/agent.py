@@ -7,6 +7,7 @@ from pydantic import BaseModel
 
 from app.agent.loop import run_agent_turn
 from app.agent.multi_agent import run_multi_agent_analysis
+from app.agent.injection_lab import run_injection_demo
 from app.agent.tools import filing_search_service
 
 router = APIRouter()
@@ -28,6 +29,11 @@ class ChatRequest(BaseModel):
 class MultiAnalysisRequest(BaseModel):
     ticker: str
     chart_image: str | None = None  # base64 PNG, optionally a data: URL - see multi_agent.py
+
+
+class InjectionDemoRequest(BaseModel):
+    scenario: Literal["filing_summary", "web_research"]
+    defenses_on: bool
 
 
 class IngestFilingRequest(BaseModel):
@@ -69,6 +75,22 @@ def multi_analysis(request: MultiAnalysisRequest):
     def event_stream():
         try:
             for event in run_multi_agent_analysis(request.ticker, image_b64=image_b64):
+                yield f"data: {json.dumps(event)}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+# Sync, same reasoning as /chat above. Backs the Prompt Injection Lab page
+# (see agent/injection_lab.py's module docstring) - a dedicated demo action,
+# not a tool the main chat agent can call, and never dispatches any real
+# tool regardless of what the model does in response.
+@router.post("/injection_demo")
+def injection_demo(request: InjectionDemoRequest):
+    def event_stream():
+        try:
+            for event in run_injection_demo(request.scenario, request.defenses_on):
                 yield f"data: {json.dumps(event)}\n\n"
         except Exception as e:
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
