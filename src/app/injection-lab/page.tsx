@@ -1,6 +1,7 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import DashboardLayout from "@/components/layout/dashboard-layout";
 import { InjectionDemoColumn } from "@/components/dashboard/injection-demo-column";
@@ -94,6 +95,20 @@ function InjectionLabContent() {
 }
 
 export default function InjectionLabPage() {
+    const router = useRouter();
+    // Feature flag - NEXT_PUBLIC_ENABLE_INJECTION_LAB, defaults to enabled.
+    // Hides the nav link too (dashboard-layout.tsx), but direct navigation
+    // to this URL still needs its own guard; bounced to Overview rather than
+    // shown a "disabled" message, matching the backend's 404-not-403 choice
+    // (agent.py's _injection_lab_enabled()) of looking like it doesn't exist.
+    const enabled = process.env.NEXT_PUBLIC_ENABLE_INJECTION_LAB !== "false";
+
+    useEffect(() => {
+        if (!enabled) router.replace("/");
+    }, [enabled, router]);
+
+    if (!enabled) return null;
+
     return (
         <Suspense fallback={<div className="flex justify-center p-12"><Loader2 className="animate-spin h-8 w-8 text-primary" /></div>}>
             <DashboardLayout>

@@ -52,6 +52,8 @@ There is no automated test suite. Check your changes by running both servers and
 | `api/.env` | `ANTHROPIC_API_KEY` | The chat widget's agent (`POST /api/agent/chat`). Separate from `GEMINI_API_KEY` — see "Conversational analyst agent" below |
 | `api/.env` | `PINECONE_API_KEY` | `FilingSearchService` — the agent's `search_filings` tool and the SEC Filings upload button. Run `api/utils/create_pinecone_index.py` once first |
 | `api/.env` | `FRED_API_KEY` | Live GDP/unemployment/CPI/Fed-rate data on `/macro` (`FinanceService.get_economic_data`). Optional — falls back to a hardcoded 2024 snapshot if unset |
+| `.env.local` (Next) | `NEXT_PUBLIC_ENABLE_INJECTION_LAB` | Feature flag for `/injection-lab` (optional, defaults to enabled). `"false"` hides its sidebar link and bounces direct navigation to `/`. **Keep in sync with `ENABLE_INJECTION_LAB` below** — the two sides aren't read from one shared value. |
+| `api/.env` | `ENABLE_INJECTION_LAB` | Same flag, backend side (optional, defaults to enabled). `"false"` makes `POST /agent/injection_demo` return 404 instead of running. |
 
 Templates live in `.env.example` (frontend) and `api/.env.example` (backend). Never commit real values: the example files hold placeholders only, and credentials, emails and connection strings are always read from the environment and never hard-coded (not even as `os.getenv` defaults). CI jobs get their values from GitHub Secrets.
 
@@ -226,6 +228,8 @@ A demo portfolio, not a real brokerage link. The CRUD logic (add/sell/delete a p
 **Honest finding, not a hypothesis:** across 36 trials spanning 8 payload strategies while building this, Claude already resisted both scenarios reliably with *no* defense in play — it identifies embedded tool-result text as untrusted and says so to the user, unprompted. So the lab isn't "watch the undefended arm fail" — both arms are expected to resist most of the time. Its value is verifying that directly instead of asserting it, and layering the explicit rule as defense-in-depth on top of training-time behavior this app doesn't control.
 
 The defense itself is permanent, not lab-only: `UNTRUSTED_CONTENT_RULE` (`api/app/agent/loop.py`) is appended to the real `SYSTEM_PROMPT` used by `/chat` and `/multi_analysis`, and `run_agent_turn`'s plain-string tool-result branch wraps the result in `<untrusted_external_content>` tags. The lab imports `BASE_SYSTEM_PROMPT` (the rule-free version) and `SYSTEM_PROMPT` directly from `loop.py` rather than keeping its own copy, so its "defended" arm always reflects what's actually shipped.
+
+**Feature flag.** The lab (not the Part 1 production hardening, which is unconditional) is gated by `NEXT_PUBLIC_ENABLE_INJECTION_LAB` (frontend) / `ENABLE_INJECTION_LAB` (backend) — see the Environment variables table above. Both default to enabled; set either to `"false"` to turn the lab off without a code change. The frontend flag hides the sidebar link and bounces direct navigation away from `/injection-lab`; the backend flag makes `POST /agent/injection_demo` return 404. They're two separate env vars, not one shared value, so set both the same way or one side can hide the UI while the endpoint stays reachable (or vice versa).
 
 ## Conventions
 

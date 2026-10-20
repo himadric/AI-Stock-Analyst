@@ -69,7 +69,12 @@ export default function DashboardLayout({
     { name: "Rankings", href: "/rankings", icon: Trophy },
     { name: "Govt Spending Tracker", href: "/govt", icon: Shield },
     { name: "Macro", href: "/macro", icon: Globe },
-    { name: "Prompt Injection Lab", href: "/injection-lab", icon: ShieldAlert },
+    // Feature flag - NEXT_PUBLIC_ENABLE_INJECTION_LAB, defaults to enabled.
+    // See api/app/api/agent.py's _injection_lab_enabled() for the backend
+    // half of this flag (same env var name, no NEXT_PUBLIC_ prefix there).
+    ...(process.env.NEXT_PUBLIC_ENABLE_INJECTION_LAB !== "false"
+      ? [{ name: "Prompt Injection Lab", href: "/injection-lab", icon: ShieldAlert }]
+      : []),
   ];
 
   const SidebarContent = () => (
