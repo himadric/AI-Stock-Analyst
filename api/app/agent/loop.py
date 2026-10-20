@@ -227,6 +227,20 @@ def run_agent_turn(messages: list[dict]):
                 system=cached_system,
                 tools=cached_tools,
                 messages=conversation,
+                # Top-level cache_control auto-marks the last cacheable block
+                # in the *whole* request - extending the cached span past
+                # system/tools into the growing conversation itself. Doesn't
+                # make the round right after a tool call free (that round's
+                # new content - the model's own just-generated response, the
+                # tool's just-returned result - has never existed in any
+                # prior request, so some creation cost there is inherent,
+                # confirmed via Anthropic's own diagnostics.cache_miss_reason
+                # == "messages_changed", not a bug). What this does fix: that
+                # growing content no longer goes uncached forever after -
+                # the *next* round reads it back instead of reprocessing the
+                # same history again, which the two system/tools-only
+                # breakpoints alone never covered.
+                cache_control={"type": "ephemeral"},
             ) as stream:
                 for event in stream:
                     if event.type == "text":
