@@ -1,12 +1,14 @@
 import json
+import os
 from typing import Any, List, Literal, Union
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from app.agent.loop import run_agent_turn
 from app.agent.multi_agent import run_multi_agent_analysis
+from app.agent.injection_lab import run_injection_demo
 from app.agent.tools import filing_search_service
 
 router = APIRouter()
@@ -28,6 +30,11 @@ class ChatRequest(BaseModel):
 class MultiAnalysisRequest(BaseModel):
     ticker: str
     chart_image: str | None = None  # base64 PNG, optionally a data: URL - see multi_agent.py
+
+
+class InjectionDemoRequest(BaseModel):
+    scenario: Literal["filing_summary", "web_research"]
+    defenses_on: bool
 
 
 class IngestFilingRequest(BaseModel):
@@ -69,6 +76,40 @@ def multi_analysis(request: MultiAnalysisRequest):
     def event_stream():
         try:
             for event in run_multi_agent_analysis(request.ticker, image_b64=image_b64):
+                yield f"data: {json.dumps(event)}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+# Feature flag, not an API key gate like YOUTUBE_API_KEY/FRED_API_KEY (this
+# costs real Anthropic tokens per run but needs no credential of its own) -
+# lets the lab be turned off without a code change. Defaults to enabled so
+# existing deployments that haven't set this var keep today's behavior.
+# ENABLE_INJECTION_LAB (here) and NEXT_PUBLIC_ENABLE_INJECTION_LAB (frontend,
+# dashboard-layout.tsx + injection-lab/page.tsx) are two separate env vars,
+# same "keep both sides in sync" pattern as AUTH_SECRET/ALLOWED_USER_EMAIL -
+# flipping only one hides the page but leaves the endpoint reachable, or
+# vice versa, so set both the same way.
+def _injection_lab_enabled() -> bool:
+    return os.getenv("ENABLE_INJECTION_LAB", "true").lower() != "false"
+
+
+# Sync, same reasoning as /chat above. Backs the Prompt Injection Lab page
+# (see agent/injection_lab.py's module docstring) - a dedicated demo action,
+# not a tool the main chat agent can call, and never dispatches any real
+# tool regardless of what the model does in response.
+@router.post("/injection_demo")
+def injection_demo(request: InjectionDemoRequest):
+    if not _injection_lab_enabled():
+        # 404, not 403: when the flag is off, the feature should look like
+        # it doesn't exist, not like it exists but is forbidden.
+        raise HTTPException(status_code=404)
+
+    def event_stream():
+        try:
+            for event in run_injection_demo(request.scenario, request.defenses_on):
                 yield f"data: {json.dumps(event)}\n\n"
         except Exception as e:
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
