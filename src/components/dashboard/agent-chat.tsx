@@ -3,7 +3,7 @@
 import { useRef, useState, type ClipboardEvent } from "react";
 import { useSearchParams } from "next/navigation";
 import ReactMarkdown from "react-markdown";
-import { Bot, Check, ChevronDown, ChevronRight, Loader2, Send, Sparkles, Square, User, Users, Wrench, X, Zap } from "lucide-react";
+import { Bot, Check, ChevronDown, ChevronRight, Loader2, Send, ShieldAlert, ShieldCheck, Sparkles, Square, User, Users, Wrench, X, Zap } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -40,6 +40,14 @@ interface Citation {
     title: string | null;
 }
 
+interface Groundedness {
+    confidenceScore: number;
+    verdict: "grounded" | "partially_grounded" | "ungrounded";
+    flaggedClaims: { claim: string; issue: string }[];
+    reasoning: string;
+    expanded?: boolean;
+}
+
 interface DisplayMessage {
     role: "user" | "assistant";
     content: string;
@@ -63,6 +71,13 @@ interface DisplayMessage {
     // is the system prompt + tool schemas reused from cache on every round
     // after that, in this conversation or an earlier one within the TTL.
     usage?: { cacheCreated: number; cacheRead: number };
+    // LLM-as-judge: a second, cheaper model (Haiku) checking this answer
+    // against the real tool data it was based on - see
+    // api/app/agent/groundedness_judge.py. Undefined until the
+    // "groundedness" event lands (which can take a second or two after the
+    // visible answer finishes - see the "Verifying groundedness" indicator
+    // below), and never set at all for a turn with no tool calls.
+    groundedness?: Groundedness;
 }
 
 interface WatchlistProposal {
@@ -155,6 +170,14 @@ export function AgentChat() {
 
     function toggleTrace(index: number) {
         setMessages((prev) => prev.map((m, i) => (i === index ? { ...m, traceExpanded: !m.traceExpanded } : m)));
+    }
+
+    function toggleGroundedness(index: number) {
+        setMessages((prev) =>
+            prev.map((m, i) =>
+                i === index && m.groundedness ? { ...m, groundedness: { ...m.groundedness, expanded: !m.groundedness.expanded } } : m,
+            ),
+        );
     }
 
     function toggleSubagentExpand(messageIndex: number, agentId: string) {
@@ -253,6 +276,16 @@ export function AgentChat() {
                             },
                         };
                     });
+                } else if (event.type === "groundedness") {
+                    updateLast((m) => ({
+                        ...m,
+                        groundedness: {
+                            confidenceScore: event.confidence_score,
+                            verdict: event.verdict,
+                            flaggedClaims: event.flagged_claims,
+                            reasoning: event.reasoning,
+                        },
+                    }));
                 } else if (event.type === "error") {
                     assistantText += (assistantText ? "\n\n" : "") + `⚠️ ${event.message}`;
                     updateLast((m) => ({ ...m, content: assistantText }));
@@ -372,6 +405,16 @@ export function AgentChat() {
                             price: event.price,
                         },
                     ]);
+                } else if (event.type === "groundedness") {
+                    updateLast((m) => ({
+                        ...m,
+                        groundedness: {
+                            confidenceScore: event.confidence_score,
+                            verdict: event.verdict,
+                            flaggedClaims: event.flagged_claims,
+                            reasoning: event.reasoning,
+                        },
+                    }));
                 } else if (event.type === "error") {
                     assistantText += (assistantText ? "\n\n" : "") + `⚠️ ${event.message}`;
                     updateLast((m) => ({ ...m, content: assistantText }));
@@ -633,6 +676,59 @@ export function AgentChat() {
                                                     </li>
                                                 ))}
                                             </ol>
+                                        </div>
+                                    )}
+                                    {m.streaming && m.content && !m.groundedness && (
+                                        // The judge call (groundedness_judge.py) happens after the visible
+                                        // answer is already complete, so there's a silent 1-2s gap here
+                                        // before "done" fires - without this line it can read as a stall.
+                                        <p className="mt-2 text-xs text-muted-foreground flex items-center gap-1">
+                                            <Loader2 className="h-3 w-3 animate-spin" /> Verifying groundedness…
+                                        </p>
+                                    )}
+                                    {!m.streaming && m.groundedness && (
+                                        // LLM-as-judge: a second, cheaper model (Haiku) checked this
+                                        // answer's claims against the real tool data it was based on -
+                                        // see api/app/agent/groundedness_judge.py. Color threshold
+                                        // matches this app's existing green/red semantic convention.
+                                        <div className="mt-2 pt-2 border-t border-border/50">
+                                            <button
+                                                onClick={() => m.groundedness!.flaggedClaims.length > 0 && toggleGroundedness(i)}
+                                                className={cn(
+                                                    "flex items-center gap-1 text-xs font-medium",
+                                                    m.groundedness.flaggedClaims.length > 0 && "cursor-pointer hover:opacity-80",
+                                                    m.groundedness.confidenceScore >= 85
+                                                        ? "text-emerald-600 dark:text-emerald-400"
+                                                        : m.groundedness.confidenceScore >= 50
+                                                          ? "text-amber-600 dark:text-amber-400"
+                                                          : "text-destructive",
+                                                )}
+                                            >
+                                                {m.groundedness.confidenceScore >= 50 ? (
+                                                    <ShieldCheck className="h-3 w-3" />
+                                                ) : (
+                                                    <ShieldAlert className="h-3 w-3" />
+                                                )}
+                                                {m.groundedness.confidenceScore}% grounded
+                                                {m.groundedness.flaggedClaims.length > 0 && (
+                                                    <>
+                                                        · {m.groundedness.flaggedClaims.length} flagged claim{m.groundedness.flaggedClaims.length > 1 ? "s" : ""}
+                                                        {m.groundedness.expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+                                                    </>
+                                                )}
+                                            </button>
+                                            {m.groundedness.expanded && m.groundedness.flaggedClaims.length > 0 && (
+                                                <>
+                                                    <ul className="mt-1 space-y-1 text-xs text-muted-foreground pl-4 list-disc">
+                                                        {m.groundedness.flaggedClaims.map((f, fi) => (
+                                                            <li key={fi}>
+                                                                <span className="italic">&quot;{f.claim}&quot;</span> — {f.issue}
+                                                            </li>
+                                                        ))}
+                                                    </ul>
+                                                    <p className="mt-1 text-xs text-muted-foreground">{m.groundedness.reasoning}</p>
+                                                </>
+                                            )}
                                         </div>
                                     )}
                                 </>

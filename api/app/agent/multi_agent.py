@@ -21,6 +21,7 @@ import threading
 
 from app.agent.tools import TOOLS, dispatch
 from app.agent import mcp_client
+from app.agent.groundedness_judge import judge_groundedness
 from app.services.finance import FinanceService
 from app.services.portfolio_service import PortfolioService
 
@@ -365,6 +366,7 @@ def run_multi_agent_analysis(ticker: str, image_b64: str | None = None, image_me
             {"type": "image", "source": {"type": "base64", "media_type": image_media_type, "data": image_b64}},
         ]
 
+    coordinator_text_parts: list[str] = []
     try:
         with client.messages.stream(
             model=MODEL,
@@ -375,6 +377,7 @@ def run_multi_agent_analysis(ticker: str, image_b64: str | None = None, image_me
         ) as stream:
             for event in stream:
                 if event.type == "text":
+                    coordinator_text_parts.append(event.text)
                     yield {"type": "text", "text": event.text}
             final_message = stream.get_final_message()
     except Exception as e:
@@ -426,5 +429,14 @@ def run_multi_agent_analysis(ticker: str, image_b64: str | None = None, image_me
                     print(f"[multi_agent] auto-execute failed for {trade_ticker}: {e}", flush=True)
 
             yield {"type": "trade_proposal", "ticker": trade_ticker, "action": action, "reason": reason}
+
+    # Checked against the four subagent reports (report_block, already built
+    # above for the coordinator's own prompt) plus the position context -
+    # same groundedness_judge.py used by loop.py's run_agent_turn, a second
+    # independent (and cheaper) model verifying the coordinator didn't
+    # synthesize a claim none of its four sources actually support.
+    verdict = judge_groundedness("".join(coordinator_text_parts), report_block + position_block)
+    if verdict:
+        yield {"type": "groundedness", **verdict}
 
     yield {"type": "done"}
