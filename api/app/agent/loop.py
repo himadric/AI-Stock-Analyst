@@ -14,6 +14,7 @@ import re
 from app.agent.tools import TOOLS, TOOL_DISPATCH, dispatch
 from app.agent import mcp_client
 from app.agent import skills
+from app.agent.groundedness_judge import judge_groundedness
 
 MODEL = "claude-sonnet-5-5"
 MAX_TOOL_TURNS = 8
@@ -181,6 +182,7 @@ def run_agent_turn(messages: list[dict]):
       {"type": "watchlist_proposal", "ticker": "...", "reason": "..."}
       {"type": "citation", "cited_text": "...", "source": "...", "title": "..."}
       {"type": "usage", "input_tokens": N, "cache_creation_input_tokens": N, "cache_read_input_tokens": N, "output_tokens": N}
+      {"type": "groundedness", "confidence_score": N, "verdict": "...", "flagged_claims": [...], "reasoning": "..."}
       {"type": "error", "message": "..."}
       {"type": "done"}
 
@@ -205,6 +207,13 @@ def run_agent_turn(messages: list[dict]):
     the cache (`cache_creation_input_tokens > 0`), and every round after
     reads from it (`cache_read_input_tokens > 0`, billed far cheaper than a
     normal input token) until the cache's 5-minute TTL lapses.
+
+    groundedness is a second, independent model (Haiku, cheap) checking the
+    complete answer against every tool result gathered across the whole
+    turn (not just the last internal round) - see groundedness_judge.py.
+    Skipped entirely if no tool was called this turn (nothing to check an
+    answer against), and never raises - a judge failure must not break the
+    real answer already delivered.
     """
     api_key = os.getenv("ANTHROPIC_API_KEY")
     if not api_key:
@@ -241,6 +250,12 @@ def run_agent_turn(messages: list[dict]):
     if all_tools:
         cached_tools = [*all_tools[:-1], {**all_tools[-1], "cache_control": {"type": "ephemeral"}}]
 
+    # Accumulated across every internal round below (not just the last one)
+    # so the groundedness judge, at the end, sees exactly what the user saw
+    # and everything it could have been based on.
+    answer_text_parts: list[str] = []
+    all_tool_results: list[dict] = []
+
     for turn in range(MAX_TOOL_TURNS):
         try:
             with client.messages.stream(
@@ -252,6 +267,7 @@ def run_agent_turn(messages: list[dict]):
             ) as stream:
                 for event in stream:
                     if event.type == "text":
+                        answer_text_parts.append(event.text)
                         yield {"type": "text", "text": event.text}
                     elif event.type == "citation":
                         citation = event.citation
@@ -278,6 +294,7 @@ def run_agent_turn(messages: list[dict]):
         conversation.append({"role": "assistant", "content": final_message.content})
 
         if final_message.stop_reason != "tool_use":
+            yield from _judge_and_yield(answer_text_parts, all_tool_results)
             yield {"type": "done"}
             return
 
@@ -287,6 +304,7 @@ def run_agent_turn(messages: list[dict]):
                 continue
             yield {"type": "tool_start", "tool": block.name, "args": block.input}
             result_text = dispatch(block.name, block.input or {})
+            all_tool_results.append({"tool": block.name, "args": block.input, "result": result_text})
             yield {"type": "tool_end", "tool": block.name}
 
             if block.name == "propose_watchlist_add":
@@ -314,5 +332,25 @@ def run_agent_turn(messages: list[dict]):
 
         conversation.append({"role": "user", "content": tool_results})
 
-    yield {"type": "text", "text": "\n\n_(Hit my research limit for this question — happy to keep going if you narrow it down.)_"}
+    fallback_text = "\n\n_(Hit my research limit for this question — happy to keep going if you narrow it down.)_"
+    answer_text_parts.append(fallback_text)
+    yield {"type": "text", "text": fallback_text}
+    yield from _judge_and_yield(answer_text_parts, all_tool_results)
     yield {"type": "done"}
+
+
+def _judge_and_yield(answer_text_parts: list[str], all_tool_results: list[dict]):
+    """
+    Shared by run_agent_turn's two exit points. Skips entirely if no tool
+    was called this turn - nothing to check a plain conversational answer
+    against, and no reason to pay for a judge call that can't say anything
+    meaningful.
+    """
+    if not all_tool_results:
+        return
+    source_context = "\n\n".join(
+        f"Tool: {r['tool']}\nArgs: {r['args']}\nResult: {r['result']}" for r in all_tool_results
+    )
+    verdict = judge_groundedness("".join(answer_text_parts), source_context)
+    if verdict:
+        yield {"type": "groundedness", **verdict}

@@ -447,6 +447,17 @@ export type AgentEvent =
     // that many tokens (the system prompt + tool schemas) were reused from
     // cache instead of reprocessed.
     | { type: "usage"; input_tokens: number; cache_creation_input_tokens: number; cache_read_input_tokens: number; output_tokens: number }
+    // A second, cheaper model (Haiku) checking the answer against the real
+    // tool data it was based on - see api/app/agent/groundedness_judge.py.
+    // Sent once per turn, after the answer finishes, only when at least one
+    // tool was called (nothing to check a tool-free reply against).
+    | {
+          type: "groundedness";
+          confidence_score: number;
+          verdict: "grounded" | "partially_grounded" | "ungrounded";
+          flagged_claims: { claim: string; issue: string }[];
+          reasoning: string;
+      }
     | { type: "error"; message: string }
     | { type: "done" };
 
