@@ -25,6 +25,9 @@ class ChatMessage(BaseModel):
 
 class ChatRequest(BaseModel):
     messages: List[ChatMessage]
+    # Opt-in self-critique pass (see agent/reflection.py) - off by default,
+    # since it roughly doubles Sonnet usage for the turn.
+    reflect: bool = False
 
 
 class MultiAnalysisRequest(BaseModel):
@@ -54,7 +57,7 @@ def chat(request: ChatRequest):
     def event_stream():
         try:
             messages = [m.model_dump() for m in request.messages]
-            for event in run_agent_turn(messages):
+            for event in run_agent_turn(messages, reflect=request.reflect):
                 yield f"data: {json.dumps(event)}\n\n"
         except Exception as e:
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"

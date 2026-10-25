@@ -15,6 +15,7 @@ from app.agent.tools import TOOLS, TOOL_DISPATCH, dispatch
 from app.agent import mcp_client
 from app.agent import skills
 from app.agent.groundedness_judge import judge_groundedness
+from app.agent.reflection import reflect_on_answer
 
 MODEL = "claude-sonnet-5-5"
 MAX_TOOL_TURNS = 8
@@ -172,7 +173,7 @@ def _mcp_result_to_citable_blocks(args: dict, result_text: str):
     return result_text
 
 
-def run_agent_turn(messages: list[dict]):
+def run_agent_turn(messages: list[dict], reflect: bool = False):
     """
     Runs the agent loop for one user turn. Yields plain dicts (JSON-serializable
     events) for the caller to forward over SSE:
@@ -182,6 +183,7 @@ def run_agent_turn(messages: list[dict]):
       {"type": "watchlist_proposal", "ticker": "...", "reason": "..."}
       {"type": "citation", "cited_text": "...", "source": "...", "title": "..."}
       {"type": "usage", "input_tokens": N, "cache_creation_input_tokens": N, "cache_read_input_tokens": N, "output_tokens": N}
+      {"type": "reflection", "needs_revision": bool, "critique": "...", "revised_answer": "..."}
       {"type": "groundedness", "confidence_score": N, "verdict": "...", "flagged_claims": [...], "reasoning": "..."}
       {"type": "error", "message": "..."}
       {"type": "done"}
@@ -214,6 +216,13 @@ def run_agent_turn(messages: list[dict]):
     Skipped entirely if no tool was called this turn (nothing to check an
     answer against), and never raises - a judge failure must not break the
     real answer already delivered.
+
+    reflection is opt-in (`reflect=True`) - the SAME model (Sonnet)
+    critiquing its own draft and, if it finds a real gap, rewriting it -
+    see reflection.py for why this is a distinct technique from the
+    groundedness judge, not a duplicate. Runs before the groundedness check;
+    if a revision happens, the judge verifies the REVISED text, since
+    that's the version the user actually ends up seeing.
     """
     api_key = os.getenv("ANTHROPIC_API_KEY")
     if not api_key:
@@ -294,7 +303,10 @@ def run_agent_turn(messages: list[dict]):
         conversation.append({"role": "assistant", "content": final_message.content})
 
         if final_message.stop_reason != "tool_use":
-            yield from _judge_and_yield(answer_text_parts, all_tool_results)
+            final_text = "".join(answer_text_parts)
+            if reflect and final_text.strip():
+                final_text = yield from _reflect_and_yield(_extract_user_question(messages), final_text, all_tool_results)
+            yield from _judge_and_yield(final_text, all_tool_results)
             yield {"type": "done"}
             return
 
@@ -335,11 +347,56 @@ def run_agent_turn(messages: list[dict]):
     fallback_text = "\n\n_(Hit my research limit for this question — happy to keep going if you narrow it down.)_"
     answer_text_parts.append(fallback_text)
     yield {"type": "text", "text": fallback_text}
-    yield from _judge_and_yield(answer_text_parts, all_tool_results)
+    final_text = "".join(answer_text_parts)
+    if reflect and final_text.strip():
+        final_text = yield from _reflect_and_yield(_extract_user_question(messages), final_text, all_tool_results)
+    yield from _judge_and_yield(final_text, all_tool_results)
     yield {"type": "done"}
 
 
-def _judge_and_yield(answer_text_parts: list[str], all_tool_results: list[dict]):
+def _build_source_context(all_tool_results: list[dict]) -> str:
+    return "\n\n".join(
+        f"Tool: {r['tool']}\nArgs: {r['args']}\nResult: {r['result']}" for r in all_tool_results
+    )
+
+
+def _extract_user_question(messages: list[dict]) -> str:
+    """
+    The last user message's text, for reflection's prompt (see reflection.py
+    for why it needs this and the judge doesn't). A message's content is
+    usually a plain string, but one with a pasted image sends Anthropic
+    content blocks instead (agent.py's ChatMessage) - only the text blocks
+    are relevant here.
+    """
+    for m in reversed(messages):
+        if m.get("role") != "user":
+            continue
+        content = m.get("content")
+        if isinstance(content, str):
+            return content
+        if isinstance(content, list):
+            return " ".join(b.get("text", "") for b in content if isinstance(b, dict) and b.get("type") == "text")
+    return ""
+
+
+def _reflect_and_yield(user_question: str, answer_text: str, all_tool_results: list[dict]):
+    """
+    Only called when reflect=True. Returns the final answer text to use
+    downstream - the revised one if a revision happened, otherwise the
+    original unchanged - via the generator's return value:
+    `final_text = yield from _reflect_and_yield(...)`.
+    """
+    source_context = _build_source_context(all_tool_results)
+    result = reflect_on_answer(user_question, answer_text, source_context)
+    if not result:
+        return answer_text
+    yield {"type": "reflection", **result}
+    if result.get("needs_revision") and result.get("revised_answer"):
+        return result["revised_answer"]
+    return answer_text
+
+
+def _judge_and_yield(answer_text: str, all_tool_results: list[dict]):
     """
     Shared by run_agent_turn's two exit points. Skips entirely if no tool
     was called this turn - nothing to check a plain conversational answer
@@ -348,9 +405,6 @@ def _judge_and_yield(answer_text_parts: list[str], all_tool_results: list[dict])
     """
     if not all_tool_results:
         return
-    source_context = "\n\n".join(
-        f"Tool: {r['tool']}\nArgs: {r['args']}\nResult: {r['result']}" for r in all_tool_results
-    )
-    verdict = judge_groundedness("".join(answer_text_parts), source_context)
+    verdict = judge_groundedness(answer_text, _build_source_context(all_tool_results))
     if verdict:
         yield {"type": "groundedness", **verdict}

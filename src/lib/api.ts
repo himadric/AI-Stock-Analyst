@@ -447,6 +447,17 @@ export type AgentEvent =
     // that many tokens (the system prompt + tool schemas) were reused from
     // cache instead of reprocessed.
     | { type: "usage"; input_tokens: number; cache_creation_input_tokens: number; cache_read_input_tokens: number; output_tokens: number }
+    // Opt-in (see streamAgentChat's `reflect` param) - the SAME model
+    // critiquing its own draft and, if it finds a real gap, rewriting it -
+    // see api/app/agent/reflection.py. Sent before "groundedness"; if
+    // needs_revision is true, revised_answer is what the judge then checks,
+    // since that's the version the user actually ends up seeing.
+    | {
+          type: "reflection";
+          needs_revision: boolean;
+          critique: string;
+          revised_answer?: string;
+      }
     // A second, cheaper model (Haiku) checking the answer against the real
     // tool data it was based on - see api/app/agent/groundedness_judge.py.
     // Sent once per turn, after the answer finishes, only when at least one
@@ -483,11 +494,11 @@ export type MultiAgentEvent =
 // uses to stop iterating run_agent_turn's generator server-side too
 // (verified empirically: a disconnected client stops a streaming generator
 // within about one iteration, not after it runs to completion unseen).
-export async function* streamAgentChat(messages: AgentChatMessage[], signal?: AbortSignal): AsyncGenerator<AgentEvent> {
+export async function* streamAgentChat(messages: AgentChatMessage[], signal?: AbortSignal, reflect?: boolean): AsyncGenerator<AgentEvent> {
     const res = await apiFetch(`/agent/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages }),
+        body: JSON.stringify({ messages, reflect: !!reflect }),
         signal,
     });
     if (!res.ok || !res.body) throw new Error("Failed to reach the analyst agent");

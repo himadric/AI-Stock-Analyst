@@ -3,10 +3,11 @@
 import { useRef, useState, type ClipboardEvent } from "react";
 import { useSearchParams } from "next/navigation";
 import ReactMarkdown from "react-markdown";
-import { Bot, Check, ChevronDown, ChevronRight, Loader2, Send, ShieldAlert, ShieldCheck, Sparkles, Square, User, Users, Wrench, X, Zap } from "lucide-react";
+import { Bot, Check, ChevronDown, ChevronRight, Loader2, RotateCcw, Send, ShieldAlert, ShieldCheck, Sparkles, Square, User, Users, Wrench, X, Zap } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import {
     addToWatchlist,
@@ -48,6 +49,12 @@ interface Groundedness {
     expanded?: boolean;
 }
 
+interface Reflection {
+    needsRevision: boolean;
+    critique: string;
+    revisedAnswer?: string;
+}
+
 interface DisplayMessage {
     role: "user" | "assistant";
     content: string;
@@ -78,6 +85,13 @@ interface DisplayMessage {
     // visible answer finishes - see the "Verifying groundedness" indicator
     // below), and never set at all for a turn with no tool calls.
     groundedness?: Groundedness;
+    // Opt-in self-critique (see api/app/agent/reflection.py) - the SAME
+    // model reviewing and possibly rewriting its own draft, a different
+    // technique from groundedness. reflectRequested is stamped at send()
+    // time from the toggle's value then (not read live later), so a
+    // mid-stream toggle flip can't relabel an in-flight message.
+    reflectRequested?: boolean;
+    reflection?: Reflection;
 }
 
 interface WatchlistProposal {
@@ -147,6 +161,11 @@ export function AgentChat() {
     // once send() uses it. Claude reads it natively alongside tool calls in
     // the same turn, unlike the one-shot, tool-free Chart page analysis.
     const [attachedImage, setAttachedImage] = useState<string | null>(null);
+    // Opt-in self-critique toggle (see api/app/agent/reflection.py) - off
+    // by default, session-only (not localStorage, matching this widget's
+    // existing client-only-history philosophy). send() stamps its value
+    // onto each new message at send time via reflectRequested.
+    const [reflectEnabled, setReflectEnabled] = useState(false);
     const [proposals, setProposals] = useState<WatchlistProposal[]>([]);
     const [tradeProposals, setTradeProposals] = useState<TradeProposal[]>([]);
     const bottomRef = useRef<HTMLDivElement>(null);
@@ -222,7 +241,7 @@ export function AgentChat() {
         setMessages((prev) => [
             ...prev,
             { role: "user", content: trimmed, image: attachedImage ?? undefined },
-            { role: "assistant", content: "", toolCalls: [], streaming: true },
+            { role: "assistant", content: "", toolCalls: [], streaming: true, reflectRequested: reflectEnabled },
         ]);
         setInput("");
         setAttachedImage(null);
@@ -234,7 +253,7 @@ export function AgentChat() {
         abortControllerRef.current = controller;
 
         try {
-            for await (const event of streamAgentChat(history, controller.signal)) {
+            for await (const event of streamAgentChat(history, controller.signal, reflectEnabled)) {
                 if (event.type === "text") {
                     assistantText += event.text;
                     updateLast((m) => ({ ...m, content: assistantText }));
@@ -276,6 +295,15 @@ export function AgentChat() {
                             },
                         };
                     });
+                } else if (event.type === "reflection") {
+                    updateLast((m) => ({
+                        ...m,
+                        reflection: {
+                            needsRevision: event.needs_revision,
+                            critique: event.critique,
+                            revisedAnswer: event.revised_answer,
+                        },
+                    }));
                 } else if (event.type === "groundedness") {
                     updateLast((m) => ({
                         ...m,
@@ -678,10 +706,45 @@ export function AgentChat() {
                                             </ol>
                                         </div>
                                     )}
-                                    {m.streaming && m.content && !m.groundedness && (
+                                    {m.streaming && m.content && m.reflectRequested && !m.reflection && (
+                                        // The self-critique pass (reflection.py) runs before groundedness
+                                        // and uses the full Sonnet model, so this gap can run a few
+                                        // seconds longer than the groundedness one below.
+                                        <p className="mt-2 text-xs text-muted-foreground flex items-center gap-1">
+                                            <Loader2 className="h-3 w-3 animate-spin" /> Reflecting on this answer…
+                                        </p>
+                                    )}
+                                    {!m.streaming && m.reflection && (
+                                        // Opt-in self-critique (reflection.py) - the SAME model reviewing
+                                        // its own draft. The original draft above is left untouched; a
+                                        // revision is shown as a clearly separate section below it, never
+                                        // a silent swap, so the improvement is visible, not hidden.
+                                        <div className="mt-2 pt-2 border-t border-border/50">
+                                            {m.reflection.needsRevision ? (
+                                                <div className="rounded-md border border-amber-500/30 bg-amber-500/5 p-2">
+                                                    <p className="flex items-center gap-1 text-xs font-medium text-amber-600 dark:text-amber-400">
+                                                        <RotateCcw className="h-3 w-3" /> Revised on review
+                                                    </p>
+                                                    <p className="mt-1 text-xs text-muted-foreground">{m.reflection.critique}</p>
+                                                    {m.reflection.revisedAnswer && (
+                                                        <div className="prose prose-sm dark:prose-invert max-w-none mt-2">
+                                                            <ReactMarkdown>{m.reflection.revisedAnswer}</ReactMarkdown>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            ) : (
+                                                <p className="text-xs text-muted-foreground flex items-center gap-1">
+                                                    <Check className="h-3 w-3" /> Reviewed — no changes needed
+                                                </p>
+                                            )}
+                                        </div>
+                                    )}
+                                    {m.streaming && m.content && (!m.reflectRequested || m.reflection) && !m.groundedness && (
                                         // The judge call (groundedness_judge.py) happens after the visible
-                                        // answer is already complete, so there's a silent 1-2s gap here
-                                        // before "done" fires - without this line it can read as a stall.
+                                        // answer (and any reflection pass) is already complete, so there's
+                                        // a silent 1-2s gap here before "done" fires - without this line it
+                                        // can read as a stall. Held off until reflection resolves, if it
+                                        // was requested, so the two gap messages don't overlap.
                                         <p className="mt-2 text-xs text-muted-foreground flex items-center gap-1">
                                             <Loader2 className="h-3 w-3 animate-spin" /> Verifying groundedness…
                                         </p>
@@ -822,8 +885,15 @@ export function AgentChat() {
                 <div ref={bottomRef} />
             </div>
 
+            <div className="flex items-center justify-between gap-2 pt-2 border-t">
+                <label htmlFor="reflect-toggle" className="text-xs text-muted-foreground">
+                    Reflect before finalizing
+                    <span className="block text-[10px] opacity-75">A second Sonnet pass reviews and can revise each answer — slower, off by default</span>
+                </label>
+                <Switch id="reflect-toggle" checked={reflectEnabled} onCheckedChange={setReflectEnabled} />
+            </div>
             {attachedImage && (
-                <div className="flex items-center gap-2 pt-2 border-t">
+                <div className="flex items-center gap-2 pt-2">
                     <img src={attachedImage} alt="Pasted image to send" className="h-12 w-12 rounded border object-cover" />
                     <span className="text-xs text-muted-foreground flex-1">Image attached — will be sent with your next message or multi-agent analysis</span>
                     <Button type="button" variant="ghost" size="icon" className="h-6 w-6" onClick={() => setAttachedImage(null)}>
@@ -836,7 +906,7 @@ export function AgentChat() {
                     e.preventDefault();
                     send(input);
                 }}
-                className={cn("flex gap-2", !attachedImage && "pt-2 border-t")}
+                className="flex gap-2 pt-2"
             >
                 <Button
                     type="button"
