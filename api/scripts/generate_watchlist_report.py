@@ -6,8 +6,16 @@ job's shape fits batching unusually well: N independent, non-interactive,
 latency-insensitive per-ticker tasks, run once a day. See docs/ARCHITECTURE.md
 and CLAUDE.md for the full reasoning.
 
-Run from repo root: python api/scripts/generate_watchlist_report.py
+Locally: cd api && ../.venv/bin/python scripts/generate_watchlist_report.py
+- bare load_dotenv() below only finds api/.env if api/ is the working
+directory (verified directly: running from the repo root instead does NOT
+pick it up, since there's no .env file there - only api/.env). In CI this
+doesn't matter; GitHub Actions injects MONGO_URI/ANTHROPIC_API_KEY directly
+as real env vars, no .env file involved.
 Needs MONGO_URI (or MONGODB_URI) and ANTHROPIC_API_KEY in the environment.
+Optionally WATCHLIST_REPORT_POLL_INTERVAL_SECONDS and
+WATCHLIST_REPORT_MAX_WAIT_SECONDS to override the batch-polling defaults
+below.
 """
 import sys
 import os
@@ -30,13 +38,17 @@ from app.services.finance import FinanceService
 REPORT_MODEL = "claude-haiku-4-5-20251001"
 MAX_TOKENS = 512
 
-# Polled every POLL_INTERVAL_SECONDS, capped at MAX_WAIT_SECONDS (~55 min) -
-# comfortably within "most batches finish within an hour" (Anthropic's own
-# guidance) and GitHub Actions' default job time limit. A batch that's still
-# running past this is abandoned for today rather than left half-handled;
-# tomorrow's scheduled run tries again from scratch.
-POLL_INTERVAL_SECONDS = 30
-MAX_WAIT_SECONDS = 55 * 60
+# Polled every POLL_INTERVAL_SECONDS, capped at MAX_WAIT_SECONDS (~55 min
+# default) - comfortably within "most batches finish within an hour"
+# (Anthropic's own guidance) and GitHub Actions' default job time limit. A
+# batch that's still running past this is abandoned for today rather than
+# left half-handled; tomorrow's scheduled run tries again from scratch.
+# Both configurable via env vars - retrieve() calls are free (pure status
+# metadata, no token usage), so there's no cost reason to poll tightly; a
+# longer interval just means fewer, chattier log lines and a coarser
+# "how close is it to done" signal, not a cost tradeoff.
+POLL_INTERVAL_SECONDS = int(os.environ.get("WATCHLIST_REPORT_POLL_INTERVAL_SECONDS", 30))
+MAX_WAIT_SECONDS = int(os.environ.get("WATCHLIST_REPORT_MAX_WAIT_SECONDS", 55 * 60))
 
 REPORT_SYSTEM_PROMPT = """You write a short daily digest entry for one stock ticker, for someone who already \
 holds it on a watchlist and just wants to know what, if anything, changed. You'll be given the ticker's \

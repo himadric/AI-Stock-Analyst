@@ -27,5 +27,9 @@ jobs:
       env:
         MONGODB_URI: ${{ secrets.MONGO_URI }}
         ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        # batches.retrieve() calls are pure status metadata lookups - free,
+        # no token usage - so this is a logging-noise/precision tradeoff,
+        # not a cost one. 10 minutes here.
+        WATCHLIST_REPORT_POLL_INTERVAL_SECONDS: "600"
       run: |
         python api/scripts/generate_watchlist_report.py
