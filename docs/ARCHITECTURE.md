@@ -645,10 +645,17 @@ Static reference data in the repo: `api/app/data/sp_indices.json`, `uei_mapping.
 | `update_senate.yml` | `15 2 * * *` | `api/scripts/update_senate_data.py` | `MONGO_URI`, `FMP_API_KEY` | 3.11 |
 | `update_snp_heatmap.yml` | `30 21 * * 1-5` | `api/scripts/update_snp_heatmap.py` | `MONGO_URI` | 3.9 |
 | `update_vanguard.yml` | `0 0 * * 0` | `api/scripts/update_vanguard_data.py` | `MONGO_URI` (passed as `MONGODB_URI`) | 3.11 |
+| `update_watchlist_report.yml` | `0 11 * * 1-5` | `api/scripts/generate_watchlist_report.py` | `MONGO_URI` (as `MONGODB_URI`), `ANTHROPIC_API_KEY` | 3.11 |
 
 All workflows also support `workflow_dispatch`. The scripts add `api/` to `sys.path` so they can reuse `app.services.*`, and they load dotenv optionally so they also run locally.
 
 **Why this pattern exists:** 13F XML parsing, scoring about 1,500 tickers, and paid or rate-limited APIs are far too slow for a Vercel function's time limit. So the function reads a snapshot, and the heavy work runs in Actions.
+
+**`update_watchlist_report.yml` is this same pattern, but the "heavy work" is an Anthropic Message Batch, not a plain fetch.** One request per watchlist ticker (quote from `FinanceService.get_quotes()`, news from `get_company_news()`, baked into the prompt - no tool use, since the Batch API runs each request as an independent one-shot call rather than a multi-turn agentic loop) goes into a single `client.messages.batches.create()` call, Haiku generating a short "what changed" summary per ticker. This is a deliberate exception to §4.4's "Model split" rule (Gemini for one-shot analysis, Claude for the tool-use agent) - made because the batch shape fits this specific job unusually well: N independent, non-interactive, latency-insensitive tasks, run once a day, where Anthropic's confirmed 50% batch discount stacks with prompt caching (every request shares an identical `cache_control`-tagged system prompt) for a meaningfully cheaper pipeline than either a live Gemini call per ticker or standing up a separate Vertex AI batch integration this app doesn't otherwise have.
+
+The script polls `batches.retrieve(batch.id)` until `processing_status == "ended"` (capped around 55 minutes, comfortably inside Anthropic's own "most batches finish within an hour" guidance and GitHub Actions' job limits), then reads `batches.results(batch.id)` and matches each line back to a ticker by `custom_id`. A per-ticker failure (`result.type` of `"errored"`/`"canceled"`/`"expired"`) is logged and skipped, not fatal to the rest of the report - verified live by submitting a batch with one deliberately invalid model name alongside a valid request: the valid one still came back `"succeeded"` while the invalid one came back `"errored"`, confirming the per-item handling actually works, not just reads correctly in the common case.
+
+A real bug surfaced in live testing: `generated_at` initially rendered in the UI as "Generated in about 4 hours" - the future, not the past. pymongo returns a naive `datetime` reading it back from Mongo (BSON itself has no timezone concept, data is always UTC), and FastAPI serializes a naive datetime to an ISO string with no `Z`/offset - which browsers parse as the viewer's *local* time, not UTC. `GET /watchlist/report` now re-attaches `timezone.utc` before returning, so the ISO string is unambiguous.
 
 ---
 
