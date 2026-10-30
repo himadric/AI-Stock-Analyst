@@ -1,8 +1,9 @@
 "use client"
 
 import { useEffect, useState, Suspense } from "react"
-import { getWatchlist, removeFromWatchlist } from "@/lib/api"
+import { getWatchlist, removeFromWatchlist, fetchWatchlistReport, type WatchlistReport } from "@/lib/api"
 import { WatchlistTable } from "@/components/watchlist/watchlist-table"
+import { DailyReportCard } from "@/components/watchlist/daily-report-card"
 import DashboardLayout from "@/components/layout/dashboard-layout"
 
 interface WatchlistItem {
@@ -15,13 +16,18 @@ interface WatchlistItem {
 
 function WatchlistContent() {
     const [data, setData] = useState<WatchlistItem[]>([])
+    const [report, setReport] = useState<WatchlistReport | null>(null)
     const [loading, setLoading] = useState(true)
 
     const fetchData = async () => {
         setLoading(true)
         try {
-            const res = await getWatchlist()
-            setData(res)
+            const [watchlistRes, reportRes] = await Promise.all([
+                getWatchlist(),
+                fetchWatchlistReport(),
+            ])
+            setData(watchlistRes)
+            setReport(reportRes)
         } catch (e) {
             console.error("Failed to fetch watchlist", e)
         } finally {
@@ -62,7 +68,10 @@ function WatchlistContent() {
                         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
                     </div>
                 ) : (
-                    <WatchlistTable data={data} onRemove={handleRemove} />
+                    <div className="space-y-6">
+                        <DailyReportCard report={report} />
+                        <WatchlistTable data={data} onRemove={handleRemove} />
+                    </div>
                 )}
             </div>
         </DashboardLayout>

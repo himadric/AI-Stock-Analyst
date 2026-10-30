@@ -70,7 +70,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how it's built and [CLAUDE.
 - **Ownership** — the insider/institution/public split, top institutional holders, and recent insider transactions.
 - **Brand Sentiment** — sentiment scored from news and YouTube reviews (VADER), with a net sentiment score, pos/neu/neg breakdown, emotion tags, and trending keywords.
 - **ETF Analysis** — holdings, sector weightings, and an AI "Quality Core" assessment for a 10-year horizon.
-- **Watchlist** — your saved tickers with live price and day change.
+- **Watchlist** — your saved tickers with live price and day change, plus a daily AI digest: once a day, before market open, a short "what changed, anything notable" summary is generated per ticker from that day's price move and headlines. Built on Anthropic's Message Batches API (one batched request per ticker, run overnight) rather than a live call per ticker — a deliberate choice for a job that's inherently non-interactive, where the 50% batch discount and prompt caching stack for a meaningfully cheaper pipeline than generating each summary synchronously.
 - **Portfolio** — a demo portfolio (not a real brokerage link): open positions with live gain/loss against your cost basis, and closed positions showing buy price, sell price, and realized gain/loss (selling moves a position here, it's never deleted).
 
 ### Stock Analyst Assistant (AI chat)

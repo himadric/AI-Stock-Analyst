@@ -369,6 +369,32 @@ export async function removeFromWatchlist(ticker: string) {
     return res.json();
 }
 
+export interface WatchlistReportEntry {
+    ticker: string;
+    name: string;
+    price: number | null;
+    change: number | null;
+    change_percent: number | null;
+    summary: string;
+}
+
+export interface WatchlistReport {
+    type: "daily_watchlist_report";
+    generated_at: string;
+    reports: WatchlistReportEntry[];
+}
+
+// Written by api/scripts/generate_watchlist_report.py (Anthropic Batch API,
+// one summary per watchlist ticker, once a day) - null is a normal state
+// (no run yet), not an error, so this returns null on a non-OK response
+// rather than throwing, matching the optional-data convention elsewhere in
+// this file.
+export async function fetchWatchlistReport(): Promise<WatchlistReport | null> {
+    const res = await apiFetch(`/watchlist/report`);
+    if (!res.ok) return null;
+    return res.json();
+}
+
 // Portfolio — a demo/fake portfolio, not a real brokerage link. Selling
 // never deletes a position; it moves it into the closed section (see
 // api/app/api/portfolio.py).

@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, Body
 from app.db import db
 from pydantic import BaseModel
 import yfinance as yf
+from datetime import timezone
 from typing import List
 
 router = APIRouter()
@@ -56,6 +57,35 @@ async def get_watchlist():
             })
             
     return data
+
+# Sync (not async def), unlike the handlers above in this file - those are a
+# known, documented exception to CLAUDE.md's blocking-call rule ("several
+# existing handlers get this wrong; don't copy them"). This one follows it
+# correctly: find_one() is a blocking pymongo call, so this needs to run in
+# FastAPI's threadpool.
+@router.get("/report")
+def get_watchlist_report():
+    """
+    Reads the daily digest snapshot written by
+    api/scripts/generate_watchlist_report.py (Anthropic Batch API, one
+    summary per watchlist ticker). Returns None if the job hasn't run yet -
+    a normal, expected state for a fresh deployment, not an error.
+    """
+    database = db.get_db()
+    doc = database.watchlist_report.find_one({"type": "daily_watchlist_report"})
+    if not doc:
+        return None
+    doc.pop("_id", None)
+    # pymongo returns a naive datetime (BSON strips tzinfo, always UTC) -
+    # attach it back explicitly, or FastAPI serializes an ISO string with no
+    # "Z"/offset, which browsers parse as local time, not UTC. That bug was
+    # real here: generated_at came back as "2026-10-30T15:47:55.358000",
+    # and the frontend's formatDistanceToNow read it as several hours in
+    # the future ("Generated in about 4 hours") instead of in the past.
+    generated_at = doc.get("generated_at")
+    if generated_at and generated_at.tzinfo is None:
+        doc["generated_at"] = generated_at.replace(tzinfo=timezone.utc)
+    return doc
 
 @router.post("")
 async def add_to_watchlist(item: WatchlistItem):
