@@ -179,6 +179,15 @@ def main():
             all_passed = False
             continue
 
+        # Always shown, not just on failure - this is what caught the
+        # VERCEL_AUTOMATION_BYPASS_SECRET and Deployment Protection issues:
+        # without it, a backend "error" SSE event (run_agent_turn's own
+        # {"type": "error", ...}, folded into answer text as "[ERROR: ...]")
+        # was silently invisible, and a zero-tool-calls failure looked
+        # identical to a real but wrong agent response.
+        preview = result["answer"][:300].replace("\n", " ")
+        print(f"  Answer: {preview}{'...' if len(result['answer']) > 300 else ''}")
+
         checks = [
             ("tools", *_check_tools(case.get("expected_tools"), result["tools_called"])),
             ("phrases", *_check_phrases(case.get("must_not_contain"), result["answer"])),
