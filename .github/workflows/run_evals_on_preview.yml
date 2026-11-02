@@ -6,10 +6,10 @@ on:
 jobs:
   run-evals:
     # Only react to Vercel's own preview deployments succeeding - not
-    # production deploys, and not in-progress/failed ones. The exact
-    # "Preview" casing is standard Vercel behavior but hasn't been
-    # confirmed against this specific repo's integration; if this gate
-    # never fires, log `${{ toJSON(github.event) }}` to see the real value.
+    # production deploys, and not in-progress/failed ones. Confirmed live
+    # on this repo's actual integration (not just assumed): the exact
+    # "Preview" casing matched, and this gate fired correctly on the very
+    # first real deployment_status event.
     if: github.event.deployment_status.state == 'success' && github.event.deployment.environment == 'Preview'
     runs-on: ubuntu-latest
     permissions:
@@ -46,6 +46,14 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
           ALLOWED_USER_EMAIL: ${{ secrets.ALLOWED_USER_EMAIL }}
+          # Vercel Deployment Protection gates the whole preview before any
+          # request reaches this app's own auth - confirmed live, the first
+          # real run got a 401 "Protected by Vercel Authentication" before
+          # AUTH_SECRET was ever checked. This is Vercel's own bypass for
+          # exactly that (Project Settings -> Deployment Protection ->
+          # Protection Bypass for Automation generates it - this app can't
+          # issue it itself).
+          VERCEL_PROTECTION_BYPASS_SECRET: ${{ secrets.VERCEL_PROTECTION_BYPASS_SECRET }}
         run: |
           python api/evals/run_evals.py --base-url "${{ github.event.deployment_status.environment_url }}" | tee eval_output.txt
 

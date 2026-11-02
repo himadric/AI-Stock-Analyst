@@ -17,6 +17,13 @@ verify a real deployment (this app has real history of local/prod
 divergence: the MCP subprocess resolution issue, SSE "not verified in
 production" - see CLAUDE.md Gotchas) - and needs AUTH_SECRET and
 ALLOWED_USER_EMAIL in the environment to mint a token via auth_helper.py.
+Against a Vercel preview specifically, also needs
+VERCEL_PROTECTION_BYPASS_SECRET (optional against non-Vercel targets like
+a local dev server) - Vercel's Deployment Protection gates the whole
+preview before any request reaches this app's own auth at all; this is
+Vercel's own supported bypass for exactly that, confirmed live (the first
+real run against a preview got a 401 "Protected by Vercel Authentication"
+before this app's auth was ever involved).
 
 Scores but never calls a second judge: the groundedness check reuses
 whatever verdict the real run_agent_turn() already produced (via
@@ -71,9 +78,23 @@ def _run_http(question: str, base_url: str) -> dict:
     allowed_user_email = os.environ["ALLOWED_USER_EMAIL"]
     token = mint_token(auth_secret, allowed_user_email)
 
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    # Vercel Deployment Protection sits in front of the whole preview - a
+    # platform-level gate separate from this app's own AUTH_SECRET auth
+    # (confirmed live: the first real run against a preview got a 401
+    # "Protected by Vercel Authentication" before the request ever reached
+    # require_auth()/verify_token()). This header is Vercel's own supported
+    # bypass for exactly this case - a secret Vercel itself generates
+    # (Project Settings -> Deployment Protection -> Protection Bypass for
+    # Automation), not something this app issues. Omitted entirely (not
+    # sent empty) when unset, so local/non-Vercel targets are unaffected.
+    bypass_secret = os.environ.get("VERCEL_PROTECTION_BYPASS_SECRET")
+    if bypass_secret:
+        headers["x-vercel-protection-bypass"] = bypass_secret
+
     resp = requests.post(
         f"{base_url.rstrip('/')}/api/agent/chat",
-        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+        headers=headers,
         json={"messages": [{"role": "user", "content": question}], "reflect": False},
         stream=True,
         timeout=120,
