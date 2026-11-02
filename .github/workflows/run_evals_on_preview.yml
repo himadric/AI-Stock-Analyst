@@ -53,7 +53,7 @@ jobs:
           # exactly that (Project Settings -> Deployment Protection ->
           # Protection Bypass for Automation generates it - this app can't
           # issue it itself).
-          VERCEL_PROTECTION_BYPASS_SECRET: ${{ secrets.VERCEL_PROTECTION_BYPASS_SECRET }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
         run: |
           python api/evals/run_evals.py --base-url "${{ github.event.deployment_status.environment_url }}" | tee eval_output.txt
 

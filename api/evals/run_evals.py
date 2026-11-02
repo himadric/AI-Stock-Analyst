@@ -18,7 +18,7 @@ divergence: the MCP subprocess resolution issue, SSE "not verified in
 production" - see CLAUDE.md Gotchas) - and needs AUTH_SECRET and
 ALLOWED_USER_EMAIL in the environment to mint a token via auth_helper.py.
 Against a Vercel preview specifically, also needs
-VERCEL_PROTECTION_BYPASS_SECRET (optional against non-Vercel targets like
+VERCEL_AUTOMATION_BYPASS_SECRET (optional against non-Vercel targets like
 a local dev server) - Vercel's Deployment Protection gates the whole
 preview before any request reaches this app's own auth at all; this is
 Vercel's own supported bypass for exactly that, confirmed live (the first
@@ -88,7 +88,7 @@ def _run_http(question: str, base_url: str) -> dict:
     # (Project Settings -> Deployment Protection -> Protection Bypass for
     # Automation), not something this app issues. Omitted entirely (not
     # sent empty) when unset, so local/non-Vercel targets are unaffected.
-    bypass_secret = os.environ.get("VERCEL_PROTECTION_BYPASS_SECRET")
+    bypass_secret = os.environ.get("VERCEL_AUTOMATION_BYPASS_SECRET")
     if bypass_secret:
         headers["x-vercel-protection-bypass"] = bypass_secret
 
