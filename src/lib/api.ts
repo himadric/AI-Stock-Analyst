@@ -473,6 +473,13 @@ export type AgentEvent =
     // that many tokens (the system prompt + tool schemas) were reused from
     // cache instead of reprocessed.
     | { type: "usage"; input_tokens: number; cache_creation_input_tokens: number; cache_read_input_tokens: number; output_tokens: number }
+    // Automatic, fires at most once, right at the start of a turn, only
+    // when the incoming history is already long - see
+    // api/app/agent/context_compaction.py and loop.py's
+    // COMPACTION_THRESHOLD_MESSAGES. Everything older than the kept tail
+    // got summarized into this turn's system prompt instead of resent
+    // verbatim.
+    | { type: "context_compacted"; messages_summarized: number }
     // Opt-in (see streamAgentChat's `reflect` param) - the SAME model
     // critiquing its own draft and, if it finds a real gap, rewriting it -
     // see api/app/agent/reflection.py. Sent before "groundedness"; if

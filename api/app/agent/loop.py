@@ -16,9 +16,19 @@ from app.agent import mcp_client
 from app.agent import skills
 from app.agent.groundedness_judge import judge_groundedness
 from app.agent.reflection import reflect_on_answer
+from app.agent.context_compaction import summarize_context
 
 MODEL = "claude-sonnet-5-5"
 MAX_TOOL_TURNS = 8
+# A long chat history is resent in full every turn (the frontend's history
+# is client-side only - see CLAUDE.md Gotchas). Past this many messages,
+# everything older than the last COMPACTION_KEEP_LAST is summarized into
+# the system prompt instead of resent verbatim - see context_compaction.py.
+# COMPACTION_KEEP_LAST is kept even on purpose: the frontend always sends a
+# strictly alternating user/assistant list, so user turns sit at even
+# indices, which keeps the boundary-alignment math in run_agent_turn simple.
+COMPACTION_THRESHOLD_MESSAGES = 20
+COMPACTION_KEEP_LAST = 8
 MAX_TOKENS = 2048
 
 BASE_SYSTEM_PROMPT = f"""You are the research assistant built into AI Analyst, a personal stock/ETF \
@@ -183,6 +193,7 @@ def run_agent_turn(messages: list[dict], reflect: bool = False):
       {"type": "watchlist_proposal", "ticker": "...", "reason": "..."}
       {"type": "citation", "cited_text": "...", "source": "...", "title": "..."}
       {"type": "usage", "input_tokens": N, "cache_creation_input_tokens": N, "cache_read_input_tokens": N, "output_tokens": N}
+      {"type": "context_compacted", "messages_summarized": N}
       {"type": "reflection", "needs_revision": bool, "critique": "...", "revised_answer": "..."}
       {"type": "groundedness", "confidence_score": N, "verdict": "...", "flagged_claims": [...], "reasoning": "..."}
       {"type": "error", "message": "..."}
@@ -223,6 +234,16 @@ def run_agent_turn(messages: list[dict], reflect: bool = False):
     groundedness judge, not a duplicate. Runs before the groundedness check;
     if a revision happens, the judge verifies the REVISED text, since
     that's the version the user actually ends up seeing.
+
+    context_compacted fires at most once, right at the start, when the
+    incoming history is already longer than COMPACTION_THRESHOLD_MESSAGES -
+    everything older than the last COMPACTION_KEEP_LAST messages gets
+    summarized (Haiku, see context_compaction.py) into this call's system
+    prompt rather than resent verbatim. Automatic, not opt-in, unlike
+    reflection - Haiku is cheap and this only fires occasionally, not every
+    turn. Never changes behavior on failure: if summarization fails or the
+    threshold isn't crossed, the full history and plain SYSTEM_PROMPT are
+    used exactly as before this existed.
     """
     api_key = os.getenv("ANTHROPIC_API_KEY")
     if not api_key:
@@ -238,6 +259,24 @@ def run_agent_turn(messages: list[dict], reflect: bool = False):
     client = anthropic.Anthropic(api_key=api_key)
     conversation = [{"role": m["role"], "content": m["content"]} for m in messages]
 
+    # Context compaction: summarize everything older than the kept tail
+    # into the system prompt, not into a fake message spliced into
+    # `conversation` - verified live before building this that the model
+    # treats a synthetic user-role "here's a summary of earlier" message as
+    # an unverified claim ("I don't actually have access to previous
+    # conversations"), but accepts the identical summary naturally when
+    # it's in the system prompt instead. See context_compaction.py.
+    system_text = SYSTEM_PROMPT
+    if len(conversation) > COMPACTION_THRESHOLD_MESSAGES:
+        boundary = len(conversation) - COMPACTION_KEEP_LAST
+        boundary += boundary % 2  # round up to the nearest even index, where a "user" turn sits
+        if 0 < boundary < len(conversation):
+            summary = summarize_context(conversation[:boundary])
+            if summary:
+                system_text = f"{SYSTEM_PROMPT}\n\nSummary of earlier conversation:\n{summary}"
+                yield {"type": "context_compacted", "messages_summarized": boundary}
+                conversation = conversation[boundary:]
+
     # Discovered once per user turn, not re-fetched on every one of the (up
     # to 8) internal tool-call rounds below - mcp_client.discover_tools()
     # caches its result after the first successful call in this process
@@ -246,15 +285,27 @@ def run_agent_turn(messages: list[dict], reflect: bool = False):
     # model, with no per-tool wrapper code on this side - see mcp_client.py.
     all_tools = TOOLS + mcp_client.discover_tools()
 
-    # Prompt caching: SYSTEM_PROMPT and the tools list are identical, as-is,
-    # on every internal round below and on every later message in the same
-    # conversation - a cache_control breakpoint tells Claude to reuse that
-    # prefix instead of reprocessing it each time. One breakpoint on the
-    # system block; one on the last tool, which caches the whole tools
-    # array up to and including it (Anthropic's cache_control semantics -
-    # a single breakpoint covers everything before it in the request, not
-    # just the block it's attached to).
-    cached_system = [{"type": "text", "text": SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}}]
+    # Prompt caching: system_text (SYSTEM_PROMPT, or SYSTEM_PROMPT + a
+    # compaction summary - see above) and the tools list are identical,
+    # as-is, on every internal round below and on every later message in
+    # the same conversation - a cache_control breakpoint tells Claude to
+    # reuse that prefix instead of reprocessing it each time. One
+    # breakpoint on the system block; one on the last tool, which caches
+    # the whole tools array up to and including it (Anthropic's
+    # cache_control semantics - a single breakpoint covers everything
+    # before it in the request, not just the block it's attached to).
+    # Within one run_agent_turn() call, system_text is fixed, so every
+    # internal round after the first fully reuses the cache - verified live
+    # (cache_creation_input_tokens: 0 on round 2+, same as without
+    # compaction). Across separate user turns that each independently
+    # trigger compaction, though, summarize_context() re-runs fresh each
+    # time and Haiku's wording isn't byte-identical call to call - also
+    # verified live: Anthropic's cache still recognized and reused the
+    # unchanging SYSTEM_PROMPT prefix (identical cache_read_input_tokens
+    # both times), but paid a small fresh cache_creation for just the
+    # appended summary suffix each time it differed. Prefix-based caching
+    # degrades gracefully here, it doesn't fall back to zero reuse.
+    cached_system = [{"type": "text", "text": system_text, "cache_control": {"type": "ephemeral"}}]
     cached_tools = all_tools
     if all_tools:
         cached_tools = [*all_tools[:-1], {**all_tools[-1], "cache_control": {"type": "ephemeral"}}]

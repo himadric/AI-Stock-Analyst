@@ -3,7 +3,7 @@
 import { useRef, useState, type ClipboardEvent } from "react";
 import { useSearchParams } from "next/navigation";
 import ReactMarkdown from "react-markdown";
-import { Bot, Check, ChevronDown, ChevronRight, Loader2, RotateCcw, Send, ShieldAlert, ShieldCheck, Sparkles, Square, User, Users, Wrench, X, Zap } from "lucide-react";
+import { Bot, Check, ChevronDown, ChevronRight, Loader2, RotateCcw, Scissors, Send, ShieldAlert, ShieldCheck, Sparkles, Square, User, Users, Wrench, X, Zap } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -92,6 +92,11 @@ interface DisplayMessage {
     // mid-stream toggle flip can't relabel an in-flight message.
     reflectRequested?: boolean;
     reflection?: Reflection;
+    // Automatic, fires at most once per turn when the sent history was
+    // already long - see api/app/agent/context_compaction.py. Undefined
+    // for the vast majority of turns (most conversations never cross the
+    // threshold).
+    messagesCompacted?: number;
 }
 
 interface WatchlistProposal {
@@ -277,6 +282,8 @@ export function AgentChat() {
                     });
                 } else if (event.type === "watchlist_proposal") {
                     setProposals((prev) => [...prev, { ticker: event.ticker, reason: event.reason, status: "pending" }]);
+                } else if (event.type === "context_compacted") {
+                    updateLast((m) => ({ ...m, messagesCompacted: event.messages_summarized }));
                 } else if (event.type === "citation") {
                     updateLast((m) => {
                         const existing = m.citations || [];
@@ -679,6 +686,18 @@ export function AgentChat() {
                                                 m.usage.cacheCreated > 0 ? `${m.usage.cacheCreated.toLocaleString()} tokens cached` : null,
                                                 m.usage.cacheRead > 0 ? `${m.usage.cacheRead.toLocaleString()} tokens read from cache` : null,
                                             ].filter(Boolean).join(" · ")}
+                                        </p>
+                                    )}
+                                    {m.messagesCompacted && (
+                                        // Automatic, informational only (see
+                                        // api/app/agent/context_compaction.py) - the frontend still sent
+                                        // the full history; the backend summarized everything older than
+                                        // its kept tail into this turn's system prompt instead of
+                                        // resending it verbatim. Shown as soon as it's known, not held
+                                        // until streaming ends, same as the tool-call trace above.
+                                        <p className="mt-2 text-xs text-muted-foreground flex items-center gap-1">
+                                            <Scissors className="h-3 w-3" />
+                                            Summarized {m.messagesCompacted} earlier messages to stay within context.
                                         </p>
                                     )}
                                     {!m.streaming && m.citations && m.citations.length > 0 && (
