@@ -1,0 +1,71 @@
+name: Run Agent Evals on Preview
+
+on:
+  deployment_status
+
+jobs:
+  run-evals:
+    # Only react to Vercel's own preview deployments succeeding - not
+    # production deploys, and not in-progress/failed ones. Confirmed live
+    # on this repo's actual integration (not just assumed): the exact
+    # "Preview" casing matched, and this gate fired correctly on the very
+    # first real deployment_status event.
+    if: github.event.deployment_status.state == 'success' && github.event.deployment.environment == 'Preview'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install anthropic requests
+
+      - name: Find the PR for this deployment
+        id: pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          number=$(gh api repos/${{ github.repository }}/commits/${{ github.event.deployment.sha }}/pulls --jq '.[0].number // empty')
+          echo "number=$number" >> "$GITHUB_OUTPUT"
+
+      - name: Run evals against the preview
+        id: evals
+        # Advisory only - a flaky or borderline eval case should never
+        # fail this check run or block the PR, same stance CLAUDE.md
+        # already states for the Claude Code review.
+        continue-on-error: true
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
+          ALLOWED_USER_EMAIL: ${{ secrets.ALLOWED_USER_EMAIL }}
+          # Vercel Deployment Protection gates the whole preview before any
+          # request reaches this app's own auth - confirmed live, the first
+          # real run got a 401 "Protected by Vercel Authentication" before
+          # AUTH_SECRET was ever checked. This is Vercel's own bypass for
+          # exactly that (Project Settings -> Deployment Protection ->
+          # Protection Bypass for Automation generates it - this app can't
+          # issue it itself).
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+        run: |
+          python api/evals/run_evals.py --base-url "${{ github.event.deployment_status.environment_url }}" | tee eval_output.txt
+
+      - name: Post results
+        if: steps.pr.outputs.number != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          {
+            echo "### Agent evals against this preview"
+            echo '```'
+            cat eval_output.txt
+            echo '```'
+          } > comment_body.md
+          gh pr comment ${{ steps.pr.outputs.number }} --body-file comment_body.md
