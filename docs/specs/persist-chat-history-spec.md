@@ -1,6 +1,6 @@
 # Spec: Persist chat conversations to MongoDB
 
-Design-stage counterpart to [docs/intents/persist-chat-history-intent.md](../intents/persist-chat-history-intent.md) (Plan stage). This is the version-controlled design spec for the feature, per the AI-Native SDLC Playbook's Plan → Design → Build → Test → Deploy → Maintain framework — written and reviewable before any implementation diff exists.
+Design-stage counterpart to [docs/intents/persist-chat-history-intent.md](../intents/persist-chat-history-intent.md) (Plan stage). This is the version-controlled design spec for the feature, per the AI-Native SDLC Playbook's Plan → Design → Build → Test → Deploy → Maintain framework — written and reviewable before any implementation diff exists. See [docs/plans/persist-chat-history-plan.md](../plans/persist-chat-history-plan.md) for the Build-stage file-by-file plan this spec was turned into.
 
 ## Problem
 
