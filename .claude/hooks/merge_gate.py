@@ -22,8 +22,7 @@ Decision is "ask", not a hard "deny", on failure - this is a solo-dev
 project, not a multi-engineer team: if a check is wrong, or Anthropic
 credits are out again, a human should be able to see exactly why and
 choose to override, not be locked out of merging anything. See
-docs/plans/merge-gate-hook-plan.md (if present) or CLAUDE.md's
-"Approval gate" entry for the full design.
+CLAUDE.md's "Merge approval gate" section for the full design.
 
 Never raises past its own try/except - an unexpected error here must
 surface as a clear "ask" with the real reason, not an opaque crash, and
@@ -190,6 +189,19 @@ def main() -> None:
     try:
         payload = json.load(sys.stdin)
         command = payload.get("tool_input", {}).get("command", "")
+        # settings.json's "if": "Bash(gh pr merge*)" is supposed to mean
+        # this script only ever runs for a matching command - but whether
+        # "if" is honored on every installed version is disputed (a real
+        # Claude Code review comment on this hook's own PR claimed it
+        # needs v2.1.295+ too, contradicting what the docs said when this
+        # was built - see CLAUDE.md). Cheap and correct either way: don't
+        # depend on it. No-op immediately for anything that isn't actually
+        # a gh pr merge invocation, so a wrong "if" assumption costs one
+        # regex check, not a PR lookup + two CI/GraphQL round trips, and
+        # can never surface an "ask" prompt on an unrelated command.
+        if not re.search(r"\bgh\s+pr\s+merge\b", command):
+            print(json.dumps(allow("not a gh pr merge command - nothing to gate")))
+            return
         decision = decide(command)
     except Exception as e:
         decision = ask(f"merge_gate.py hit an unexpected error checking this PR ({type(e).__name__}: {e}) - couldn't confirm evals/review status, so this needs a human look")
