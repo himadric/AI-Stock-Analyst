@@ -267,6 +267,15 @@ Every pull request into `master` (from a branch in this repo, not a fork) gets a
 
 This review is advisory only. It never approves, requests changes, or edits code — treat its comments the way you'd treat a colleague's, and use your own judgment on which to act on.
 
+## Merge approval gate (Claude Code hook)
+
+`gh pr merge` is gated by a `PreToolUse` hook (`.claude/settings.json` → `.claude/hooks/merge_gate.py`) — merging to `master` triggers a real Vercel production deploy, so it's the one action in this repo's workflow that gets an enforced check rather than relying on an assistant remembering to ask. It checks, for the PR's **current head commit** specifically (not just "at some point"):
+
+1. **Agent evals** (`run_evals_on_preview.yml`) posted a `### Agent evals against this preview` PR comment containing "All cases passed." — read from the comment body, not the check's pass/fail status, because that workflow runs with `continue-on-error: true` and its GitHub check shows green even when every case fails (confirmed live once, during an Anthropic billing outage — see the Agent Evals history).
+2. **Claude Code review** (`claude-code-review.yml`) has a completed, successful run for that exact commit SHA, and every inline review comment thread it created is resolved (GitHub's per-thread "Resolve conversation" state — queried via `gh api graphql`, since `gh pr view --json` has no REST field for it).
+
+On failure it returns `"ask"`, not a hard `"deny"` — this is a solo-dev project, and a false negative (eval service down, a review that hasn't triggered yet) shouldn't lock out every merge with no recourse; "ask" surfaces the exact reason and lets a human override. Tested live against a real PR before being relied on, same as everything else in this repo's own evals/compaction/etc. work.
+
 ## Gotchas
 
 - **How API auth works.** `middleware.ts` protects pages only. The API is protected separately: `lib/api.ts` gets a 1-hour HS256 token from `/session-token` (issued only to the signed-in `ALLOWED_USER_EMAIL`) and sends it as `Authorization: Bearer`, and `api/app/auth.py` verifies it. Both sides derive the signing key from `AUTH_SECRET` using the context string `ai-analyst-api-token`; keep those in sync. A new router is protected automatically when you register it with `dependencies=protected` in `app/api/__init__.py`. Only `/health` is public. New Next.js route handlers under `/api` must call `auth()` themselves.
