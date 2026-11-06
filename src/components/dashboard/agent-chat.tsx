@@ -1,9 +1,9 @@
 "use client";
 
-import { useRef, useState, type ClipboardEvent } from "react";
+import { useEffect, useRef, useState, type ClipboardEvent } from "react";
 import { useSearchParams } from "next/navigation";
 import ReactMarkdown from "react-markdown";
-import { Bot, Check, ChevronDown, ChevronRight, Loader2, RotateCcw, Scissors, Send, ShieldAlert, ShieldCheck, Sparkles, Square, User, Users, Wrench, X, Zap } from "lucide-react";
+import { Bot, Check, ChevronDown, ChevronRight, History, Loader2, Plus, RotateCcw, Scissors, Send, ShieldAlert, ShieldCheck, Sparkles, Square, Trash2, User, Users, Wrench, X, Zap } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -16,8 +16,13 @@ import {
     fetchQuotes,
     addPortfolioPosition,
     sellPortfolioPosition,
+    getChatSessions,
+    getChatSession,
+    deleteChatSession,
     type AgentChatMessage,
     type AgentContentBlock,
+    type ChatSessionSummary,
+    type StoredChatMessage,
 } from "@/lib/api";
 
 interface ToolCallEntry {
@@ -154,6 +159,47 @@ function parseDataUrl(dataUrl: string): { mediaType: string; data: string } {
     return { mediaType, data };
 }
 
+// A stored message's content is either a plain string or Anthropic content
+// blocks (text + image) - same shape as AgentChatMessage.content. The image
+// itself is never persisted (see chat_session_service.py - its base64 is
+// replaced with a placeholder before storing), so only the text block
+// matters for display here.
+function storedContentToText(content: StoredChatMessage["content"]): string {
+    if (typeof content === "string") return content;
+    const textBlock = content.find((b) => b.type === "text");
+    return textBlock && textBlock.type === "text" ? textBlock.text : "";
+}
+
+// Converts a resumed session's stored message (snake_case, matches the
+// backend's assistant-entry shape) into this component's DisplayMessage
+// (camelCase) - a 1:1 field mapping, tolerant of any optional key being
+// absent since most turns don't produce most of these.
+function storedToDisplay(msg: StoredChatMessage): DisplayMessage {
+    return {
+        role: msg.role,
+        content: storedContentToText(msg.content),
+        toolCalls: msg.tool_calls,
+        citations: msg.citations?.map((c) => ({ citedText: c.cited_text, source: c.source, title: c.title })),
+        usage: msg.usage ? { cacheCreated: msg.usage.cache_created, cacheRead: msg.usage.cache_read } : undefined,
+        messagesCompacted: msg.context_compacted,
+        reflection: msg.reflection
+            ? {
+                  needsRevision: msg.reflection.needs_revision,
+                  critique: msg.reflection.critique,
+                  revisedAnswer: msg.reflection.revised_answer,
+              }
+            : undefined,
+        groundedness: msg.groundedness
+            ? {
+                  confidenceScore: msg.groundedness.confidence_score,
+                  verdict: msg.groundedness.verdict as Groundedness["verdict"],
+                  flaggedClaims: msg.groundedness.flagged_claims,
+                  reasoning: msg.groundedness.reasoning,
+              }
+            : undefined,
+    };
+}
+
 export function AgentChat() {
     const [messages, setMessages] = useState<DisplayMessage[]>([]);
     const [input, setInput] = useState("");
@@ -173,12 +219,25 @@ export function AgentChat() {
     const [reflectEnabled, setReflectEnabled] = useState(false);
     const [proposals, setProposals] = useState<WatchlistProposal[]>([]);
     const [tradeProposals, setTradeProposals] = useState<TradeProposal[]>([]);
+    // Chat session persistence (see api/app/services/chat_session_service.py)
+    // - sessionId is null until the backend creates one on the first message
+    // of a chat (lazy creation, no session on mount). sessions backs the
+    // history overlay; sidebarOpen toggles it.
+    const [sessionId, setSessionId] = useState<string | null>(null);
+    const [sessions, setSessions] = useState<ChatSessionSummary[]>([]);
+    const [sidebarOpen, setSidebarOpen] = useState(false);
     const bottomRef = useRef<HTMLDivElement>(null);
     // useSearchParams reflects the URL's current ?ticker= regardless of where
     // this component is mounted in the tree (it's driven by Next's router
     // context, not file position) - same reasoning usePathname relies on in
     // stock-analyst-assistant.tsx. Falls back to the app's standard default.
     const ticker = useSearchParams().get("ticker") || "AAPL";
+
+    // Best-effort - an empty list just means the history overlay shows
+    // nothing; a failed fetch here must never break the widget itself.
+    useEffect(() => {
+        getChatSessions().then(setSessions).catch(() => {});
+    }, []);
 
     const scrollToBottom = () => {
         requestAnimationFrame(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }));
@@ -258,7 +317,7 @@ export function AgentChat() {
         abortControllerRef.current = controller;
 
         try {
-            for await (const event of streamAgentChat(history, controller.signal, reflectEnabled)) {
+            for await (const event of streamAgentChat(history, controller.signal, reflectEnabled, sessionId)) {
                 if (event.type === "text") {
                     assistantText += event.text;
                     updateLast((m) => ({ ...m, content: assistantText }));
@@ -324,6 +383,19 @@ export function AgentChat() {
                 } else if (event.type === "error") {
                     assistantText += (assistantText ? "\n\n" : "") + `⚠️ ${event.message}`;
                     updateLast((m) => ({ ...m, content: assistantText }));
+                } else if (event.type === "session_created") {
+                    // Fires once, as the first event, only when this turn
+                    // started with no sessionId yet - learn the real id
+                    // without a second round trip, and prepend a local
+                    // summary into the overlay's list immediately (a true
+                    // title/timestamps refresh happens next time the list is
+                    // refetched, e.g. on next mount).
+                    setSessionId(event.session_id);
+                    const nowIso = new Date().toISOString();
+                    setSessions((prev) => [
+                        { id: event.session_id, title: trimmed.slice(0, 60) || "Chat with image", created_at: nowIso, updated_at: nowIso },
+                        ...prev,
+                    ]);
                 }
             }
         } catch (e) {
@@ -474,6 +546,31 @@ export function AgentChat() {
         abortControllerRef.current?.abort();
     }
 
+    // Pure local reset, no backend call - a session isn't created until the
+    // first message of a new chat is actually sent (lazy creation, matching
+    // Claude's own "+ New" reference behavior).
+    function newChat() {
+        setSessionId(null);
+        setMessages([]);
+        setProposals([]);
+        setTradeProposals([]);
+        setSidebarOpen(false);
+    }
+
+    // Loads a previous session's full transcript and replaces the current
+    // one with it. Best-effort: a failed fetch here just leaves the overlay
+    // open rather than silently clearing the current conversation.
+    async function resumeSession(id: string) {
+        try {
+            const detail = await getChatSession(id);
+            setSessionId(id);
+            setMessages(detail.messages.map(storedToDisplay));
+            setSidebarOpen(false);
+        } catch {
+            // Leave the overlay open and the current conversation untouched.
+        }
+    }
+
     async function confirmProposal(index: number) {
         const proposal = proposals[index];
         try {
@@ -515,7 +612,53 @@ export function AgentChat() {
     }
 
     return (
-        <div className="flex flex-col h-full min-h-0">
+        <div className="flex flex-col h-full min-h-0 relative">
+            <div className="flex items-center justify-between pb-2 border-b shrink-0">
+                <Button variant="ghost" size="icon" onClick={() => setSidebarOpen(true)} aria-label="Chat history" title="Chat history">
+                    <History className="h-4 w-4" />
+                </Button>
+                <Button variant="ghost" size="icon" onClick={newChat} aria-label="New chat" title="New chat">
+                    <Plus className="h-4 w-4" />
+                </Button>
+            </div>
+            {sidebarOpen && (
+                // Composing a message while browsing history isn't a real use
+                // case, so this covers the transcript, reflect toggle,
+                // attached-image row, and input form all at once - simpler
+                // than carving out just the transcript area.
+                <div className="absolute inset-x-0 top-10 bottom-0 z-20 bg-card flex flex-col">
+                    <div className="flex items-center justify-between px-3 py-2 border-b">
+                        <span className="text-sm font-semibold">Previous chats</span>
+                        <Button variant="ghost" size="icon" onClick={() => setSidebarOpen(false)}>
+                            <X className="h-4 w-4" />
+                        </Button>
+                    </div>
+                    <div className="flex-1 overflow-y-auto">
+                        {sessions.length === 0 && (
+                            <p className="text-xs text-muted-foreground p-3">No previous chats yet.</p>
+                        )}
+                        {sessions.map((s) => (
+                            <div key={s.id} className="flex items-center group">
+                                <button
+                                    onClick={() => resumeSession(s.id)}
+                                    className="flex-1 text-left px-3 py-2 text-sm hover:bg-muted truncate"
+                                >
+                                    {s.title}
+                                </button>
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="opacity-0 group-hover:opacity-100 shrink-0 mr-1"
+                                    onClick={() => deleteChatSession(s.id).then(() => setSessions((prev) => prev.filter((x) => x.id !== s.id)))}
+                                    aria-label="Delete chat"
+                                >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                </Button>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
             <div className="flex-1 overflow-y-auto space-y-4 pb-4">
                 {messages.length === 0 && (
                     <Card>

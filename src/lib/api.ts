@@ -503,7 +503,11 @@ export type AgentEvent =
           reasoning: string;
       }
     | { type: "error"; message: string }
-    | { type: "done" };
+    | { type: "done" }
+    // Fires once, as the very first event, only when the turn was sent with
+    // no session_id - see api/app/api/agent.py's chat(). Lets the frontend
+    // learn the newly created session's id without a second round trip.
+    | { type: "session_created"; session_id: string };
 
 // Multi-agent stock research (see api/app/agent/multi_agent.py) — a
 // dedicated action, not part of the regular chat turn, so it has its own
@@ -517,6 +521,49 @@ export type MultiAgentEvent =
     | { type: "trade_proposal"; ticker: string; action: "buy" | "sell"; reason: string }
     | { type: "trade_executed"; ticker: string; action: "buy" | "sell"; shares: number; price: number; reason: string };
 
+// Chat session persistence (see api/app/services/chat_session_service.py) —
+// one growing Mongo document per session, main chat only (not
+// multi_analysis). getPortfolio()'s typed, non-streaming apiFetch pattern.
+export interface ChatSessionSummary {
+    id: string;
+    title: string;
+    created_at: string;
+    updated_at: string;
+}
+
+export interface StoredChatMessage {
+    role: "user" | "assistant";
+    content: string | AgentContentBlock[];
+    tool_calls?: { tool: string; args: Record<string, unknown>; status: "running" | "done" }[];
+    citations?: { cited_text: string; source: string | null; title: string | null }[];
+    usage?: { cache_created: number; cache_read: number };
+    context_compacted?: number;
+    reflection?: { needs_revision: boolean; critique: string; revised_answer?: string };
+    groundedness?: { confidence_score: number; verdict: string; flagged_claims: { claim: string; issue: string }[]; reasoning: string };
+    created_at: string;
+}
+
+export interface ChatSessionDetail extends ChatSessionSummary {
+    messages: StoredChatMessage[];
+}
+
+export async function getChatSessions(): Promise<ChatSessionSummary[]> {
+    const res = await apiFetch(`/agent/sessions`);
+    if (!res.ok) throw new Error("Failed to fetch chat sessions");
+    return res.json();
+}
+
+export async function getChatSession(id: string): Promise<ChatSessionDetail> {
+    const res = await apiFetch(`/agent/sessions/${id}`);
+    if (!res.ok) throw new Error("Failed to fetch chat session");
+    return res.json();
+}
+
+export async function deleteChatSession(id: string): Promise<void> {
+    const res = await apiFetch(`/agent/sessions/${id}`, { method: "DELETE" });
+    if (!res.ok) throw new Error("Failed to delete chat session");
+}
+
 // Streams the agent's response as it's generated. Not a plain fetch: this
 // endpoint returns text/event-stream, and EventSource can't send the
 // Authorization header apiFetch attaches, so we parse the SSE stream by
@@ -527,11 +574,11 @@ export type MultiAgentEvent =
 // uses to stop iterating run_agent_turn's generator server-side too
 // (verified empirically: a disconnected client stops a streaming generator
 // within about one iteration, not after it runs to completion unseen).
-export async function* streamAgentChat(messages: AgentChatMessage[], signal?: AbortSignal, reflect?: boolean): AsyncGenerator<AgentEvent> {
+export async function* streamAgentChat(messages: AgentChatMessage[], signal?: AbortSignal, reflect?: boolean, sessionId?: string | null): AsyncGenerator<AgentEvent> {
     const res = await apiFetch(`/agent/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages, reflect: !!reflect }),
+        body: JSON.stringify({ messages, reflect: !!reflect, session_id: sessionId ?? null }),
         signal,
     });
     if (!res.ok || !res.body) throw new Error("Failed to reach the analyst agent");
