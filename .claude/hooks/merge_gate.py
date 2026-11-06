@@ -43,6 +43,11 @@ def run(cmd: list[str]) -> str:
 
 
 def resolve_pr_number(command: str) -> int:
+    # Only matches a PR number immediately after "merge" (e.g. "gh pr merge
+    # 66 --squash"). "gh pr merge --squash 66" (flags before the number)
+    # won't match and falls back to resolving via the current branch below
+    # - usually correct for this repo's one-branch-checked-out-at-a-time
+    # workflow, but a silent fallback, not a validated one.
     match = re.search(r"\bgh\s+pr\s+merge\b\s+(\d+)", command)
     if match:
         return int(match.group(1))
@@ -51,7 +56,7 @@ def resolve_pr_number(command: str) -> int:
     return json.loads(out)["number"]
 
 
-def check_evals(pr: dict, head_sha_date: str) -> str | None:
+def check_evals(pr: dict, head_sha: str) -> str | None:
     """Returns None if the check passes, else a human-readable reason it failed."""
     eval_comments = [
         c for c in pr["comments"]
@@ -60,12 +65,49 @@ def check_evals(pr: dict, head_sha_date: str) -> str | None:
     if not eval_comments:
         return "no agent-evals comment found on this PR yet (it posts when a Preview deployment succeeds for the latest commit - check one has finished deploying)"
 
-    latest = max(eval_comments, key=lambda c: c["createdAt"])
-    if latest["createdAt"] < head_sha_date:
-        return f"the latest agent-evals comment ({latest['createdAt']}) predates the current head commit ({head_sha_date}) - push a fresh commit's evals haven't run yet, or wait for them"
+    # Matched by exact commit SHA (embedded in the comment header by
+    # run_evals_on_preview.yml), not by comparing timestamps - a stale
+    # comment compared only by createdAt could look "newer than" a new
+    # head commit after a rebase/cherry-pick that preserves an old
+    # committer date, or a quick follow-up push with no new eval run yet.
+    matching = [c for c in eval_comments if head_sha in c["body"].split("\n", 1)[0]]
+    if not matching:
+        return f"no agent-evals comment matches the current head commit ({head_sha[:8]}) - the latest one is for a different commit; wait for a fresh run"
+
+    latest = max(matching, key=lambda c: c["createdAt"])
     if "All cases passed." not in latest["body"]:
-        return f"the latest agent-evals comment reports failures - see {latest['url']}"
+        return f"the agent-evals comment for commit {head_sha[:8]} reports failures - see {latest['url']}"
     return None
+
+
+def fetch_all_review_threads(owner: str, repo: str, pr_number: int) -> list[dict]:
+    """Paginated - a PR with more than one page of review threads must not
+    silently skip checking the rest for unresolved ones."""
+    query = """
+    query($owner: String!, $repo: String!, $pr: Int!, $after: String) {
+      repository(owner: $owner, name: $repo) {
+        pullRequest(number: $pr) {
+          reviewThreads(first: 50, after: $after) {
+            nodes { isResolved comments(first: 1) { nodes { url } } }
+            pageInfo { hasNextPage endCursor }
+          }
+        }
+      }
+    }
+    """
+    threads: list[dict] = []
+    after: str | None = None
+    while True:
+        args = ["gh", "api", "graphql", "-f", f"query={query}",
+                "-f", f"owner={owner}", "-f", f"repo={repo}", "-F", f"pr={pr_number}"]
+        if after:
+            args += ["-f", f"after={after}"]
+        page = json.loads(run(args))["data"]["repository"]["pullRequest"]["reviewThreads"]
+        threads.extend(page["nodes"])
+        if not page["pageInfo"]["hasNextPage"]:
+            break
+        after = page["pageInfo"]["endCursor"]
+    return threads
 
 
 def check_code_review(pr_number: int, head_sha: str) -> str | None:
@@ -79,27 +121,9 @@ def check_code_review(pr_number: int, head_sha: str) -> str | None:
     if not any(r["status"] == "completed" and r["conclusion"] == "success" for r in matching):
         return f"Claude Code Review hasn't completed successfully for the current head commit ({head_sha[:8]}) yet"
 
-    query = """
-    query($owner: String!, $repo: String!, $pr: Int!) {
-      repository(owner: $owner, name: $repo) {
-        pullRequest(number: $pr) {
-          reviewThreads(first: 50) {
-            nodes { isResolved comments(first: 1) { nodes { url } } }
-          }
-        }
-      }
-    }
-    """
     owner_repo = run(["gh", "repo", "view", "--json", "owner,name"])
     info = json.loads(owner_repo)
-    graphql_out = run([
-        "gh", "api", "graphql",
-        "-f", f"query={query}",
-        "-f", f"owner={info['owner']['login']}",
-        "-f", f"repo={info['name']}",
-        "-F", f"pr={pr_number}",
-    ])
-    threads = json.loads(graphql_out)["data"]["repository"]["pullRequest"]["reviewThreads"]["nodes"]
+    threads = fetch_all_review_threads(info["owner"]["login"], info["name"], pr_number)
     unresolved = [t for t in threads if not t["isResolved"]]
     if unresolved:
         urls = ", ".join(t["comments"]["nodes"][0]["url"] for t in unresolved)
@@ -119,10 +143,9 @@ def decide(command: str) -> dict:
 
     head_commit = pr["commits"][-1]
     head_sha = head_commit["oid"]
-    head_sha_date = head_commit["committedDate"]
 
     reasons = []
-    eval_problem = check_evals(pr, head_sha_date)
+    eval_problem = check_evals(pr, head_sha)
     if eval_problem:
         reasons.append(f"Evals: {eval_problem}")
     review_problem = check_code_review(pr_number, head_sha)
@@ -153,9 +176,20 @@ def _decision(permission: str, reason: str) -> dict:
 
 
 def main() -> None:
-    payload = json.load(sys.stdin)
-    command = payload.get("tool_input", {}).get("command", "")
+    # Everything, including parsing stdin itself, stays inside this
+    # try/except - deliberately not relying on settings.json's
+    # "onFailure": "block" to catch a crash here. That field requires
+    # Claude Code v2.1.295+ (confirmed against the docs); the installed
+    # version at the time this was written is 2.1.243, below that
+    # threshold, so "onFailure" may be silently ignored on this exact
+    # install and a crash could fall through to "continue" (allow) instead
+    # of blocking. Always emitting a valid "ask" decision on any failure
+    # path, with exit code 0, makes the real safety guarantee not depend
+    # on that field at all - "onFailure": "block" stays in settings.json
+    # as defense-in-depth for whenever this gets upgraded past 2.1.295.
     try:
+        payload = json.load(sys.stdin)
+        command = payload.get("tool_input", {}).get("command", "")
         decision = decide(command)
     except Exception as e:
         decision = ask(f"merge_gate.py hit an unexpected error checking this PR ({type(e).__name__}: {e}) - couldn't confirm evals/review status, so this needs a human look")

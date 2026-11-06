@@ -63,7 +63,13 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           {
-            echo "### Agent evals against this preview"
+            # The commit SHA is embedded so a consumer (e.g.
+            # .claude/hooks/merge_gate.py) can match this comment to an
+            # exact commit instead of comparing timestamps - a stale
+            # comment compared only by createdAt could look "newer than" a
+            # new head commit after a rebase/cherry-pick that preserves an
+            # old committer date, or a quick follow-up push.
+            echo "### Agent evals against this preview (commit ${{ github.event.deployment.sha }})"
             echo '```'
             cat eval_output.txt
             echo '```'
