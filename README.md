@@ -46,6 +46,36 @@ AI-powered stock and ETF research dashboard.
 
 *Click the image to watch the chat assistant pull in a step-by-step playbook — a filing red-flags checklist — only when a question actually calls for it, then follow it one checklist item at a time, on YouTube.*
 
+**AI Multimodal Demo**
+
+[Watch on YouTube](https://youtu.be/iLSzacFndAo)
+
+*A multimodal agent takes more than one kind of input and combines them to answer a question — here, a chart screenshot plus a text prompt asking for a trend analysis.*
+
+**AI Citation Demo**
+
+[Watch on YouTube](https://youtu.be/f6gaLyAR5UE)
+
+*Citations from RAG over SEC filings, and from an MCP-powered web search, show exactly which documents an answer came from — a signal the model isn't hallucinating.*
+
+**AI Prompt Caching Demo**
+
+[Watch on YouTube](https://youtu.be/0bY0Sh3cNdg)
+
+*Prompt caching lets a tool-calling agent skip resending the same system prompt and tool definitions on every turn — the first call creates the cache, every call after reads it back at a fraction of the cost and latency.*
+
+**AI Prompt Injection Demo**
+
+[Watch on YouTube](https://youtu.be/hgX2n09o5rE)
+
+*A side-by-side test of poisoned tool content — a filing excerpt and a fetched webpage, each trying to hijack the agent — undefended and defended, to see whether the model can tell untrusted data apart from real instructions.*
+
+**AI LLM-as-Judge Demo**
+
+[Watch on YouTube](https://youtu.be/HVJ4xU9G1Lg)
+
+*A cheaper judge model checks a more expensive model's answer against the raw tool data behind it, returning a confidence score and any specific claims it can't verify.*
+
 ## About
 
 AI Analyst puts fundamental data, market data and AI-written analysis for a stock or ETF on one dashboard. Search for a ticker to see its key metrics, quarterly financial statements, price charts with technical indicators, analyst forecasts and ownership. You can also run a Monte Carlo DCF valuation, or have Google Gemini summarize SEC filings, flag valuation and risk red flags, and read price charts and macro conditions. A **Stock Analyst Assistant** — a chat bubble in the bottom-right corner of every page (Claude, with real tool access to this app's data) — answers open-ended questions, showing its work as it looks things up. It can search across a ticker's SEC filings semantically, not just read one you point it at, and can suggest watchlist additions, but only ever adds one with your explicit confirmation.
