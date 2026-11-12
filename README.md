@@ -76,6 +76,18 @@ AI-powered stock and ETF research dashboard.
 
 *Click the image to watch a cheaper judge model check a more expensive model's answer against the raw tool data behind it, returning a confidence score and any specific claims it can't verify — on YouTube.*
 
+**AI Reflection Demo**
+
+[![Watch the AI Reflection demo on YouTube](docs/media/reflection-demo-thumbnail.png)](https://youtu.be/TrOuZ1LkQe4)
+
+*Click the image to watch the Reflection pattern catch its own incomplete answer — the same model reviews its draft, decides the token/tool-turn limits cut it off too early, and revises it — on YouTube.*
+
+**AI Context Compaction Demo**
+
+[![Watch the AI Context Compaction demo on YouTube](docs/media/context-compaction-demo-thumbnail.png)](https://youtu.be/0EY5pm0ofls)
+
+*Click the image to watch a long conversation get summarized into a compact set of facts once it passes a message threshold, and see the chat agent still recall a fact from the summarized — not verbatim — portion — on YouTube.*
+
 ## About
 
 AI Analyst puts fundamental data, market data and AI-written analysis for a stock or ETF on one dashboard. Search for a ticker to see its key metrics, quarterly financial statements, price charts with technical indicators, analyst forecasts and ownership. You can also run a Monte Carlo DCF valuation, or have Google Gemini summarize SEC filings, flag valuation and risk red flags, and read price charts and macro conditions. A **Stock Analyst Assistant** — a chat bubble in the bottom-right corner of every page (Claude, with real tool access to this app's data) — answers open-ended questions, showing its work as it looks things up. It can search across a ticker's SEC filings semantically, not just read one you point it at, and can suggest watchlist additions, but only ever adds one with your explicit confirmation.
