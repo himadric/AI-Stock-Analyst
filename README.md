@@ -48,33 +48,33 @@ AI-powered stock and ETF research dashboard.
 
 **AI Multimodal Demo**
 
-[Watch on YouTube](https://youtu.be/iLSzacFndAo)
+[![Watch the AI Multimodal demo on YouTube](docs/media/multimodal-demo-thumbnail.png)](https://youtu.be/iLSzacFndAo)
 
-*A multimodal agent takes more than one kind of input and combines them to answer a question — here, a chart screenshot plus a text prompt asking for a trend analysis.*
+*Click the image to watch a multimodal agent take more than one kind of input and combine them to answer a question — here, a chart screenshot plus a text prompt asking for a trend analysis — on YouTube.*
 
 **AI Citation Demo**
 
-[Watch on YouTube](https://youtu.be/f6gaLyAR5UE)
+[![Watch the AI Citation demo on YouTube](docs/media/citation-demo-thumbnail.png)](https://youtu.be/f6gaLyAR5UE)
 
-*Citations from RAG over SEC filings, and from an MCP-powered web search, show exactly which documents an answer came from — a signal the model isn't hallucinating.*
+*Click the image to watch citations from RAG over SEC filings, and from an MCP-powered web search, show exactly which documents an answer came from — a signal the model isn't hallucinating — on YouTube.*
 
 **AI Prompt Caching Demo**
 
-[Watch on YouTube](https://youtu.be/0bY0Sh3cNdg)
+[![Watch the AI Prompt Caching demo on YouTube](docs/media/prompt-caching-demo-thumbnail.png)](https://youtu.be/0bY0Sh3cNdg)
 
-*Prompt caching lets a tool-calling agent skip resending the same system prompt and tool definitions on every turn — the first call creates the cache, every call after reads it back at a fraction of the cost and latency.*
+*Click the image to watch prompt caching in action — the first call creates the cache, every call after reads the same system prompt and tool definitions back at a fraction of the cost and latency — on YouTube.*
 
 **AI Prompt Injection Demo**
 
-[Watch on YouTube](https://youtu.be/hgX2n09o5rE)
+[![Watch the AI Prompt Injection demo on YouTube](docs/media/prompt-injection-demo-thumbnail.png)](https://youtu.be/hgX2n09o5rE)
 
-*A side-by-side test of poisoned tool content — a filing excerpt and a fetched webpage, each trying to hijack the agent — undefended and defended, to see whether the model can tell untrusted data apart from real instructions.*
+*Click the image to watch a side-by-side test of poisoned tool content — a filing excerpt and a fetched webpage, each trying to hijack the agent — undefended and defended, to see whether the model can tell untrusted data apart from real instructions — on YouTube.*
 
 **AI LLM-as-Judge Demo**
 
-[Watch on YouTube](https://youtu.be/HVJ4xU9G1Lg)
+[![Watch the AI LLM-as-Judge demo on YouTube](docs/media/llm-judge-demo-thumbnail.png)](https://youtu.be/HVJ4xU9G1Lg)
 
-*A cheaper judge model checks a more expensive model's answer against the raw tool data behind it, returning a confidence score and any specific claims it can't verify.*
+*Click the image to watch a cheaper judge model check a more expensive model's answer against the raw tool data behind it, returning a confidence score and any specific claims it can't verify — on YouTube.*
 
 ## About
 
