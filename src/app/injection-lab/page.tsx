@@ -115,7 +115,7 @@ function InjectionLabContent() {
             </div>
 
             <Button onClick={() => setRunToken((t) => t + 1)} className="gap-2">
-                <Play className="h-4 w-4" /> Run Comparison
+                <Play className="h-4 w-4" /> {active.mode === "comparison" ? "Run Comparison" : "Run"}
             </Button>
 
             {runToken > 0 && active.mode === "comparison" && (
