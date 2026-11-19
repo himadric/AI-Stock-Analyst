@@ -73,7 +73,7 @@ export default function DashboardLayout({
     // See api/app/api/agent.py's _injection_lab_enabled() for the backend
     // half of this flag (same env var name, no NEXT_PUBLIC_ prefix there).
     ...(process.env.NEXT_PUBLIC_ENABLE_INJECTION_LAB !== "false"
-      ? [{ name: "Prompt Injection Lab", href: "/injection-lab", icon: ShieldAlert }]
+      ? [{ name: "Red-Teaming Lab", href: "/injection-lab", icon: ShieldAlert }]
       : []),
   ];
 

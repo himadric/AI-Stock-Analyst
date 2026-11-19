@@ -645,7 +645,12 @@ export async function* streamMultiAgentAnalysis(ticker: string, signal?: AbortSi
 // demo action, not part of the regular chat turn. Runs one scenario in one
 // arm (defenses on or off) and reports whether the embedded instruction in
 // the synthetic tool result worked.
-export type InjectionScenario = "filing_summary" | "web_research";
+export type InjectionScenario =
+    | "filing_summary"
+    | "web_research"
+    | "direct_jailbreak_extraction"
+    | "direct_excessive_agency"
+    | "multi_turn_advice_erosion";
 
 export type InjectionDemoEvent =
     | { type: "text"; text: string }

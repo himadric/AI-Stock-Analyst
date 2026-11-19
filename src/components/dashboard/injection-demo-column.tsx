@@ -12,9 +12,17 @@ interface InjectionDemoColumnProps {
     scenario: InjectionScenario;
     defensesOn: boolean;
     runToken: number;
+    // Overrides for single-mode (direct-message) scenarios, where
+    // "Defended"/"Delimiter + system rule ON" would misrepresent what's
+    // actually running - UNTRUSTED_CONTENT_RULE targets tool-result trust,
+    // not a direct adversarial user message, so there's no app-specific
+    // lever to label as the defense here. Comparison-mode scenarios omit
+    // these and get the original labels.
+    title?: string;
+    badgeLabel?: string;
 }
 
-export function InjectionDemoColumn({ scenario, defensesOn, runToken }: InjectionDemoColumnProps) {
+export function InjectionDemoColumn({ scenario, defensesOn, runToken, title, badgeLabel }: InjectionDemoColumnProps) {
     const [text, setText] = useState("");
     const [verdict, setVerdict] = useState<{ attackSucceeded: boolean; detail: string } | null>(null);
     const [error, setError] = useState<string | null>(null);
@@ -59,11 +67,11 @@ export function InjectionDemoColumn({ scenario, defensesOn, runToken }: Injectio
         <Card className="flex-1 min-w-0">
             <CardHeader className="flex flex-row items-center justify-between gap-2 pb-3">
                 <CardTitle className="text-sm font-semibold">
-                    {defensesOn ? "Defended" : "Undefended"}
+                    {title ?? (defensesOn ? "Defended" : "Undefended")}
                 </CardTitle>
                 <Badge variant={defensesOn ? "secondary" : "outline"} className="gap-1">
                     {defensesOn ? <ShieldCheck className="h-3 w-3" /> : <ShieldAlert className="h-3 w-3" />}
-                    {defensesOn ? "Delimiter + system rule ON" : "No defense"}
+                    {badgeLabel ?? (defensesOn ? "Delimiter + system rule ON" : "No defense")}
                 </Badge>
             </CardHeader>
             <CardContent className="space-y-3">
