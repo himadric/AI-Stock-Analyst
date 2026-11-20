@@ -5,18 +5,27 @@ part of this repo's CI - it doesn't invent a new approval mechanism, it
 enforces that the existing ones were actually satisfied before a merge
 (which triggers a real Vercel production deploy) can go through:
 
-1. Agent evals (.github/workflows/run_evals_on_preview.yml) posted a PR
-   comment for the CURRENT head commit saying "All cases passed." - that
-   workflow runs with continue-on-error: true, so its GitHub check always
-   shows green even when every eval case fails (confirmed live once,
-   during an Anthropic billing outage) - the real signal only lives in the
-   comment body, never in the check's pass/fail status. This hook reads
-   the comment, not the check.
-2. Claude Code review (.github/workflows/claude-code-review.yml) has a
-   completed run for the current head commit, AND every inline review
-   comment thread it may have created is resolved (GitHub's per-thread
-   "Resolve conversation" state, queried via the GraphQL API - gh pr
-   view's REST-backed --json has no field for this).
+1. Nothing - run_evals_on_preview.yml is disabled at the repo-Settings
+   level now (confirmed via `gh api repos/.../actions/workflows`, state
+   "disabled_manually"; turned off because every run calls the live
+   Anthropic API against a real deployed preview and costs real money).
+   check_evals() always passes now - kept as a function, not deleted, so
+   re-enabling the workflow later is a one-function change, not a rewrite.
+2. Every inline code-review comment thread on the PR is resolved
+   (GitHub's per-thread "Resolve conversation" state, queried via the
+   GraphQL API - gh pr view's REST-backed --json has no field for this).
+   This used to also require a completed, successful run of
+   .github/workflows/claude-code-review.yml for the head commit, but that
+   workflow is now disabled at the repo-Settings level (state:
+   "disabled_manually") - the software factory's own routed reviewer
+   subagents (.claude/agents/reviewer-*.md) are the code-review gate for
+   factory-originated PRs now, recorded locally in
+   factory/jobs/<id>/round-*/review-*.md and decision.md, not as a GitHub
+   check. This hook has no visibility into that local job state (it only
+   knows the PR number gh pr merge was called with), so it can't verify a
+   factory job's reviews directly; the thread-resolution check here still
+   catches any unresolved comments from any source, old workflow runs or
+   a human, left over on the PR.
 
 Decision is "ask", not a hard "deny", on failure - this is a solo-dev
 project, not a multi-engineer team: if a check is wrong, or Anthropic
@@ -56,26 +65,18 @@ def resolve_pr_number(command: str) -> int:
 
 
 def check_evals(pr: dict, head_sha: str) -> str | None:
-    """Returns None if the check passes, else a human-readable reason it failed."""
-    eval_comments = [
-        c for c in pr["comments"]
-        if c["body"].startswith("### Agent evals against this preview")
-    ]
-    if not eval_comments:
-        return "no agent-evals comment found on this PR yet (it posts when a Preview deployment succeeds for the latest commit - check one has finished deploying)"
+    """Returns None if the check passes, else a human-readable reason it failed.
 
-    # Matched by exact commit SHA (embedded in the comment header by
-    # run_evals_on_preview.yml), not by comparing timestamps - a stale
-    # comment compared only by createdAt could look "newer than" a new
-    # head commit after a rebase/cherry-pick that preserves an old
-    # committer date, or a quick follow-up push with no new eval run yet.
-    matching = [c for c in eval_comments if head_sha in c["body"].split("\n", 1)[0]]
-    if not matching:
-        return f"no agent-evals comment matches the current head commit ({head_sha[:8]}) - the latest one is for a different commit; wait for a fresh run"
-
-    latest = max(matching, key=lambda c: c["createdAt"])
-    if "All cases passed." not in latest["body"]:
-        return f"the agent-evals comment for commit {head_sha[:8]} reports failures - see {latest['url']}"
+    No longer requires a posted agent-evals comment - run_evals_on_preview.yml
+    is disabled at the repo-Settings level now (confirmed via `gh api
+    repos/.../actions/workflows`, state "disabled_manually"; the user turned
+    it off because every run calls the live Anthropic API against a real
+    deployed preview and costs real money), so requiring its comment would
+    make this check permanently unsatisfiable - the same failure mode
+    check_code_review() hit when claude-code-review.yml was disabled. pr and
+    head_sha are unused now but kept in the signature; re-enabling the
+    workflow later needs no call-site change, just this function's body.
+    """
     return None
 
 
@@ -110,16 +111,15 @@ def fetch_all_review_threads(owner: str, repo: str, pr_number: int) -> list[dict
 
 
 def check_code_review(pr_number: int, head_sha: str) -> str | None:
-    """Returns None if the check passes, else a human-readable reason it failed."""
-    runs_raw = run([
-        "gh", "run", "list", "--workflow=claude-code-review.yml",
-        "--json", "headSha,status,conclusion", "--limit", "20",
-    ])
-    runs = json.loads(runs_raw)
-    matching = [r for r in runs if r["headSha"] == head_sha]
-    if not any(r["status"] == "completed" and r["conclusion"] == "success" for r in matching):
-        return f"Claude Code Review hasn't completed successfully for the current head commit ({head_sha[:8]}) yet"
+    """Returns None if the check passes, else a human-readable reason it failed.
 
+    No longer requires a completed run of claude-code-review.yml - that
+    workflow is disabled at the repo-Settings level now (confirmed via
+    `gh api repos/.../actions/workflows`, state "disabled_manually"), so
+    requiring it would make this check permanently unsatisfiable. head_sha
+    is unused now but kept in the signature; a future per-job check against
+    factory/jobs/<id>/decision.md would need it again.
+    """
     owner_repo = run(["gh", "repo", "view", "--json", "owner,name"])
     info = json.loads(owner_repo)
     threads = fetch_all_review_threads(info["owner"]["login"], info["name"], pr_number)
@@ -153,7 +153,7 @@ def decide(command: str) -> dict:
 
     if reasons:
         return ask("Merge gate not satisfied for PR #" + str(pr_number) + " - " + "; ".join(reasons))
-    return allow(f"PR #{pr_number}: evals passed and code review resolved for commit {head_sha[:8]}.")
+    return allow(f"PR #{pr_number}: code review resolved for commit {head_sha[:8]} (evals check disabled - see check_evals()).")
 
 
 def allow(reason: str) -> dict:
