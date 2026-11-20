@@ -308,6 +308,8 @@ Whether `"if": "Bash(gh pr merge*)"` (the field that's supposed to make this scr
 
 `factory/bin/job merge`'s own `gh pr merge` call is already gated by the Merge approval gate above, for free — no changes needed there. `run_evals_on_preview.yml` still runs against the real Vercel preview once a factory PR is pushed, also unchanged. Start with `concurrency: 1` in `factory/config.json` (already set) and read every PR until you trust it, per the reference's own advice, before raising it.
 
+**Dashboard.** `cd factory && python3 -m http.server`, then open `http://localhost:8000/dashboard.html` — reads `factory/jobs/*/job.json` directly (client-side, no backend), so it only shows anything once at least one job has run.
+
 ## Gotchas
 
 - **How API auth works.** `middleware.ts` protects pages only. The API is protected separately: `lib/api.ts` gets a 1-hour HS256 token from `/session-token` (issued only to the signed-in `ALLOWED_USER_EMAIL`) and sends it as `Authorization: Bearer`, and `api/app/auth.py` verifies it. Both sides derive the signing key from `AUTH_SECRET` using the context string `ai-analyst-api-token`; keep those in sync. A new router is protected automatically when you register it with `dependencies=protected` in `app/api/__init__.py`. Only `/health` is public. New Next.js route handlers under `/api` must call `auth()` themselves.
