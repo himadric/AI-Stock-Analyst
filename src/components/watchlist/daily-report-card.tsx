@@ -4,7 +4,9 @@ import { useRouter } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Newspaper, ArrowUp, ArrowDown } from "lucide-react"
-import { formatDistanceToNow } from "date-fns"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { Portal as TooltipPortal } from "@radix-ui/react-tooltip"
+import { format, formatDistanceToNow } from "date-fns"
 import type { WatchlistReport } from "@/lib/api"
 
 interface DailyReportCardProps {
@@ -36,7 +38,21 @@ export function DailyReportCard({ report }: DailyReportCardProps) {
           <Newspaper className="h-4 w-4" /> Daily Report
         </CardTitle>
         <CardDescription>
-          Generated {formatDistanceToNow(new Date(report.generated_at), { addSuffix: true })} — one AI summary per ticker, written from that day&apos;s price move and headlines.
+          Generated{" "}
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span tabIndex={0} className="cursor-help underline decoration-dotted underline-offset-2">
+                  {formatDistanceToNow(new Date(report.generated_at), { addSuffix: true })}
+                </span>
+              </TooltipTrigger>
+              {/* Portaled: CardDescription is a <p>, and TooltipContent renders a <div> */}
+              <TooltipPortal>
+                <TooltipContent>{format(new Date(report.generated_at), "PPp")}</TooltipContent>
+              </TooltipPortal>
+            </Tooltip>
+          </TooltipProvider>
+          {" "}— one AI summary per ticker, written from that day&apos;s price move and headlines.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
