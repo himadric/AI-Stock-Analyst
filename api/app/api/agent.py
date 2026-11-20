@@ -42,7 +42,10 @@ class MultiAnalysisRequest(BaseModel):
 
 
 class InjectionDemoRequest(BaseModel):
-    scenario: Literal["filing_summary", "web_research"]
+    scenario: Literal[
+        "filing_summary", "web_research",
+        "direct_jailbreak_extraction", "direct_excessive_agency", "multi_turn_advice_erosion",
+    ]
     defenses_on: bool
 
 
