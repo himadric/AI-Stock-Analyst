@@ -12,11 +12,21 @@ enforces that the existing ones were actually satisfied before a merge
    during an Anthropic billing outage) - the real signal only lives in the
    comment body, never in the check's pass/fail status. This hook reads
    the comment, not the check.
-2. Claude Code review (.github/workflows/claude-code-review.yml) has a
-   completed run for the current head commit, AND every inline review
-   comment thread it may have created is resolved (GitHub's per-thread
-   "Resolve conversation" state, queried via the GraphQL API - gh pr
-   view's REST-backed --json has no field for this).
+2. Every inline code-review comment thread on the PR is resolved
+   (GitHub's per-thread "Resolve conversation" state, queried via the
+   GraphQL API - gh pr view's REST-backed --json has no field for this).
+   This used to also require a completed, successful run of
+   .github/workflows/claude-code-review.yml for the head commit, but that
+   workflow is now disabled at the repo-Settings level (state:
+   "disabled_manually") - the software factory's own routed reviewer
+   subagents (.claude/agents/reviewer-*.md) are the code-review gate for
+   factory-originated PRs now, recorded locally in
+   factory/jobs/<id>/round-*/review-*.md and decision.md, not as a GitHub
+   check. This hook has no visibility into that local job state (it only
+   knows the PR number gh pr merge was called with), so it can't verify a
+   factory job's reviews directly; the thread-resolution check here still
+   catches any unresolved comments from any source, old workflow runs or
+   a human, left over on the PR.
 
 Decision is "ask", not a hard "deny", on failure - this is a solo-dev
 project, not a multi-engineer team: if a check is wrong, or Anthropic
@@ -110,16 +120,15 @@ def fetch_all_review_threads(owner: str, repo: str, pr_number: int) -> list[dict
 
 
 def check_code_review(pr_number: int, head_sha: str) -> str | None:
-    """Returns None if the check passes, else a human-readable reason it failed."""
-    runs_raw = run([
-        "gh", "run", "list", "--workflow=claude-code-review.yml",
-        "--json", "headSha,status,conclusion", "--limit", "20",
-    ])
-    runs = json.loads(runs_raw)
-    matching = [r for r in runs if r["headSha"] == head_sha]
-    if not any(r["status"] == "completed" and r["conclusion"] == "success" for r in matching):
-        return f"Claude Code Review hasn't completed successfully for the current head commit ({head_sha[:8]}) yet"
+    """Returns None if the check passes, else a human-readable reason it failed.
 
+    No longer requires a completed run of claude-code-review.yml - that
+    workflow is disabled at the repo-Settings level now (confirmed via
+    `gh api repos/.../actions/workflows`, state "disabled_manually"), so
+    requiring it would make this check permanently unsatisfiable. head_sha
+    is unused now but kept in the signature; a future per-job check against
+    factory/jobs/<id>/decision.md would need it again.
+    """
     owner_repo = run(["gh", "repo", "view", "--json", "owner,name"])
     info = json.loads(owner_repo)
     threads = fetch_all_review_threads(info["owner"]["login"], info["name"], pr_number)
