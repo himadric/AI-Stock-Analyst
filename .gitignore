@@ -23,3 +23,7 @@ dist/
 
 # Vercel
 .vercel
+
+# Software factory runtime state (local to the machine running /factory run)
+/factory/jobs/
+/.worktrees/
