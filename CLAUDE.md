@@ -72,6 +72,7 @@ src/
   app/session-token/route.ts  issues the short-lived API token for the signed-in user
   app/auth_endpoints/...      NextAuth handlers (basePath is /auth_endpoints, not /api/auth)
   components/layout/dashboard-layout.tsx   sidebar nav + header ticker search
+  components/layout/theme-toggle.tsx       header dark/light toggle (flips the `dark` class on <html>; init script lives in app/layout.tsx)
   components/dashboard/stock-analyst-assistant.tsx   the chat widget's bubble+popup chrome — mounted in app/layout.tsx, not a page (see Gotchas)
   components/dashboard/agent-chat.tsx      the chat transcript itself (used by the widget above) - also owns the session history overlay (New chat, resume) since persistence was added
   components/dashboard/portfolio-table.tsx  open/closed position tables for app/portfolio/page.tsx

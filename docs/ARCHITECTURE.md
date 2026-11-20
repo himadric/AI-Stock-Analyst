@@ -165,6 +165,7 @@ export default Page  →  <Suspense fallback={spinner}>
 
 - **The ticker lives in the URL** (`?ticker=`). The header `TickerSearch` does a debounced (300 ms) call to `/api/sec/search` and then `router.push(`${redirectBase}?ticker=X`)`.
 - **Sidebar ticker memory:** `DashboardLayout` saves the last *stock* ticker to `localStorage["lastStockTicker"]` and appends it to every nav link. The ETF page is excluded, so browsing ETFs doesn't replace the remembered stock.
+- **Theme memory:** `ThemeToggle` (in the header) saves the chosen mode to `localStorage["theme"]` (`"dark"` or `"light"`).
 - **State:** local `useState`/`useEffect` only. There is no global store, React Query, or SWR. Loading, empty, and data states are rendered by hand. AI results are held in `analysisResult` state and shown with `react-markdown`.
 - **The one exception to "every page is its own tree":** `StockAnalystAssistant` (the chat widget, §4.4) is mounted once in `src/app/layout.tsx` — the actual Next.js root layout, which persists across client-side navigation — not inside `DashboardLayout`, which each page recreates. Inside it, the popup panel is always rendered and toggled with a CSS class (`open ? "flex" : "hidden"`), never `{open && <Panel/>}` — conditionally rendering it would unmount `AgentChat` (and wipe its conversation state) on every close, which is exactly the bug an early version of this shipped with.
 
@@ -195,7 +196,7 @@ export default Page  →  <Suspense fallback={spinner}>
 
 ### 3.4 Styling
 
-- Tailwind v4 is configured in CSS (`@import "tailwindcss"`, `@theme` in `globals.css`), so there is no `tailwind.config`. The shadcn tokens (`--background`, `--card`, `--primary`, `--chart-1..5`, …) are oklch CSS variables, and a `.dark` variant is declared.
+- Tailwind v4 is configured in CSS (`@import "tailwindcss"`, `@theme` in `globals.css`), so there is no `tailwind.config`. The shadcn tokens (`--background`, `--card`, `--primary`, `--chart-1..5`, …) are oklch CSS variables, with dark overrides on `.dark`. Dark mode is applied by the `dark` class on `<html>`: an inline init script in `<head>` of `src/app/layout.tsx` sets it before first paint (from the stored `localStorage["theme"]` first, then `prefers-color-scheme`), and `ThemeToggle` (`components/layout/theme-toggle.tsx`, a sun/moon button in the header) flips it and saves the choice.
 - `components.json` sets up the shadcn CLI: new-york style, neutral base, lucide icons, RSC enabled, and aliases `@/components`, `@/lib`, `@/components/ui`.
 
 ---

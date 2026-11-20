@@ -18,6 +18,18 @@ export const metadata: Metadata = {
   description: "Advanced AI-powered financial market analysis",
 };
 
+// Runs before first paint so the stored (or system) theme is applied without a flash
+const themeInitScript = `(function () {
+  var theme = null;
+  try {
+    theme = localStorage.getItem("theme");
+  } catch (e) {}
+  var dark = theme === "dark" || theme === "light"
+    ? theme === "dark"
+    : window.matchMedia("(prefers-color-scheme: dark)").matches;
+  document.documentElement.classList.toggle("dark", dark);
+})();`;
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -25,6 +37,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+      </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
         suppressHydrationWarning
