@@ -6,6 +6,7 @@ import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { TickerSearch } from "@/components/dashboard/ticker-search";
+import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { cn } from "@/lib/utils";
 import { Sheet, SheetContent, SheetTrigger, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 
@@ -166,6 +167,7 @@ export default function DashboardLayout({
                 <TickerSearch />
             )}
             <div className="flex items-center gap-4">
+                <ThemeToggle />
                 <Button variant="ghost" size="icon">
                     <div className="h-8 w-8 rounded-full bg-secondary" />
                 </Button>
