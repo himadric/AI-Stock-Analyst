@@ -5,13 +5,12 @@ part of this repo's CI - it doesn't invent a new approval mechanism, it
 enforces that the existing ones were actually satisfied before a merge
 (which triggers a real Vercel production deploy) can go through:
 
-1. Agent evals (.github/workflows/run_evals_on_preview.yml) posted a PR
-   comment for the CURRENT head commit saying "All cases passed." - that
-   workflow runs with continue-on-error: true, so its GitHub check always
-   shows green even when every eval case fails (confirmed live once,
-   during an Anthropic billing outage) - the real signal only lives in the
-   comment body, never in the check's pass/fail status. This hook reads
-   the comment, not the check.
+1. Nothing - run_evals_on_preview.yml is disabled at the repo-Settings
+   level now (confirmed via `gh api repos/.../actions/workflows`, state
+   "disabled_manually"; turned off because every run calls the live
+   Anthropic API against a real deployed preview and costs real money).
+   check_evals() always passes now - kept as a function, not deleted, so
+   re-enabling the workflow later is a one-function change, not a rewrite.
 2. Every inline code-review comment thread on the PR is resolved
    (GitHub's per-thread "Resolve conversation" state, queried via the
    GraphQL API - gh pr view's REST-backed --json has no field for this).
@@ -66,26 +65,18 @@ def resolve_pr_number(command: str) -> int:
 
 
 def check_evals(pr: dict, head_sha: str) -> str | None:
-    """Returns None if the check passes, else a human-readable reason it failed."""
-    eval_comments = [
-        c for c in pr["comments"]
-        if c["body"].startswith("### Agent evals against this preview")
-    ]
-    if not eval_comments:
-        return "no agent-evals comment found on this PR yet (it posts when a Preview deployment succeeds for the latest commit - check one has finished deploying)"
+    """Returns None if the check passes, else a human-readable reason it failed.
 
-    # Matched by exact commit SHA (embedded in the comment header by
-    # run_evals_on_preview.yml), not by comparing timestamps - a stale
-    # comment compared only by createdAt could look "newer than" a new
-    # head commit after a rebase/cherry-pick that preserves an old
-    # committer date, or a quick follow-up push with no new eval run yet.
-    matching = [c for c in eval_comments if head_sha in c["body"].split("\n", 1)[0]]
-    if not matching:
-        return f"no agent-evals comment matches the current head commit ({head_sha[:8]}) - the latest one is for a different commit; wait for a fresh run"
-
-    latest = max(matching, key=lambda c: c["createdAt"])
-    if "All cases passed." not in latest["body"]:
-        return f"the agent-evals comment for commit {head_sha[:8]} reports failures - see {latest['url']}"
+    No longer requires a posted agent-evals comment - run_evals_on_preview.yml
+    is disabled at the repo-Settings level now (confirmed via `gh api
+    repos/.../actions/workflows`, state "disabled_manually"; the user turned
+    it off because every run calls the live Anthropic API against a real
+    deployed preview and costs real money), so requiring its comment would
+    make this check permanently unsatisfiable - the same failure mode
+    check_code_review() hit when claude-code-review.yml was disabled. pr and
+    head_sha are unused now but kept in the signature; re-enabling the
+    workflow later needs no call-site change, just this function's body.
+    """
     return None
 
 
@@ -162,7 +153,7 @@ def decide(command: str) -> dict:
 
     if reasons:
         return ask("Merge gate not satisfied for PR #" + str(pr_number) + " - " + "; ".join(reasons))
-    return allow(f"PR #{pr_number}: evals passed and code review resolved for commit {head_sha[:8]}.")
+    return allow(f"PR #{pr_number}: code review resolved for commit {head_sha[:8]} (evals check disabled - see check_evals()).")
 
 
 def allow(reason: str) -> dict:
